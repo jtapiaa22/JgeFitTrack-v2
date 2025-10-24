@@ -4,9 +4,15 @@ const router = express.Router();
 const clientesController = require('../controllers/clientes.controller');
 
 // Listar
-router.get('/', auth, clientesController.getClientes);
-// Crear, editar, borrar (opcional proteger el registro si lo usará el público)
+router.get('/', clientesController.getClientes);
+
+// Registro (crear cliente con bcrypt)
 router.post('/', clientesController.registroCliente);
+
+// loguear
+router.post('/login', clientesController.loginCliente);
+
+// Editar y borrar (protegidos)
 router.put('/:id', auth, clientesController.updateCliente);
 router.delete('/:id', auth, clientesController.deleteCliente);
 
