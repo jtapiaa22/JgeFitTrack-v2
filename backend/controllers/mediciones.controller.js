@@ -17,28 +17,37 @@ exports.getMedicionesByAlumno = async (req, res) => {
 // Crear una medición
 exports.createMedicion = async (req, res) => {
   const {
-    id_alumno, fecha, peso, altura, cintura, cadera,
-    brazo, pierna, grasa_corporal, imc, balanza_manual, notas
+    id_alumno,
+    fecha,
+    peso,
+    altura,
+    cintura,
+    cadera,
+    brazo,
+    pierna,
+    grasa_corporal,
+    agua_corporal,
+    masa_muscular,
+    imc,
+    balanza_manual,
+    notas
   } = req.body;
+  
   try {
     const result = await pool.query(
-      `INSERT INTO mediciones (
-        id_alumno, fecha, peso, altura, cintura, cadera, brazo, 
-        pierna, grasa_corporal, imc, balanza_manual, notas
-      ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
-      ) RETURNING *`,
-      [
-        id_alumno, fecha, peso, altura, cintura, cadera,
-        brazo, pierna, grasa_corporal, imc,
-        balanza_manual, notas
-      ]
+      `INSERT INTO mediciones 
+        (id_alumno, fecha, peso, altura, cintura, cadera, brazo, pierna, 
+         grasa_corporal, agua_corporal, masa_muscular, imc, balanza_manual, notas)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [id_alumno, fecha, peso, altura, cintura, cadera, brazo, pierna, 
+       grasa_corporal, agua_corporal, masa_muscular, imc, balanza_manual, notas]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // Editar medición
 exports.updateMedicion = async (req, res) => {

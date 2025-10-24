@@ -6,9 +6,6 @@ const alumnosController = require('../controllers/alumnos.controller');
 // Solo usuarios autenticados pueden listar alumnos
 router.get('/:id_cliente', auth, alumnosController.getAlumnosByProfesor);
 
-//listar alumnos por profespr
-router.get('/:id_cliente', auth, alumnosController.getAlumnosByProfesor);
-
 //crear alumno
 router.post('/', auth, alumnosController.createAlumno);
 
