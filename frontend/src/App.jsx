@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
+import Layout from './components/Layout';
+import Dashboard from './pages/Dashboard';
+import Alumnos from './pages/Alumnos';
+import Mediciones from './pages/Mediciones';
+import Pagos from './pages/Pagos';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
 
-  // Al cargar, verifica si hay token guardado
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
@@ -33,26 +38,18 @@ function App() {
   }
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h1>Bienvenido, {user?.nombre}!</h1>
-      <p>Usuario: {user?.usuario}</p>
-      <button onClick={handleLogout} style={styles.logoutButton}>
-        Cerrar Sesión
-      </button>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Layout user={user} onLogout={handleLogout} />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="alumnos" element={<Alumnos />} />
+          <Route path="mediciones" element={<Mediciones />} />
+          <Route path="pagos" element={<Pagos />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
-
-const styles = {
-  logoutButton: {
-    padding: '10px 20px',
-    backgroundColor: '#dc3545',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '14px'
-  }
-};
 
 export default App;
