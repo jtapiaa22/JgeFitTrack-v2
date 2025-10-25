@@ -34,6 +34,7 @@ exports.createPagoAlumno = async (req, res) => {
   }
 };
 
+//editar pago
 exports.updatePagoAlumno = async (req, res) => {
   const { id } = req.params;
   const {
@@ -57,6 +58,7 @@ exports.updatePagoAlumno = async (req, res) => {
   }
 };
 
+//borrar pago
 exports.deletePagoAlumno = async (req, res) => {
   const { id } = req.params;
   try {
@@ -69,4 +71,25 @@ exports.deletePagoAlumno = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+//pagos del profesor (lista los pagos que tuvo, especificamente de sus alumnos)
+
+// Listar todos los pagos del profesor
+exports.getPagosByProfesor = async (req, res) => {
+  const { id_profesor } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT pa.*, a.nombre as nombre_alumno, a.dni
+       FROM pagos_alumnos pa
+       JOIN alumnos a ON pa.id_alumno = a.id
+       WHERE pa.id_profesor = $1
+       ORDER BY pa.fecha_pago DESC`,
+      [id_profesor]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 

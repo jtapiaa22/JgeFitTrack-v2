@@ -33,11 +33,14 @@ export const medicionesService = {
 };
 
 // Servicios de Pagos
+// Servicios de Pagos
 export const pagosService = {
-  getByAlumno: (id_alumno) => api.get(`/pagos-alumnos/${id_alumno}`),
+  getByAlumno: (id_alumno) => api.get(`/pagos-alumnos/alumno/${id_alumno}`),
+  getByProfesor: (id_profesor) => api.get(`/pagos-alumnos/profesor/${id_profesor}`),
   create: (data) => api.post('/pagos-alumnos', data),
   update: (id, data) => api.put(`/pagos-alumnos/${id}`, data),
   delete: (id) => api.delete(`/pagos-alumnos/${id}`)
 };
+
 
 export default api;
