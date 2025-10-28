@@ -37,8 +37,13 @@ function Mediciones() {
 
   useEffect(() => {
     loadAlumnos();
-    loadAllMediciones();
   }, []);
+
+  useEffect(() => {
+    if (alumnos.length > 0){
+      loadAllMediciones();
+    }
+  },[alumnos]);
 
   useEffect(() => {
     if (selectedAlumno && !editMode) {
@@ -71,29 +76,31 @@ function Mediciones() {
   };
 
   const loadAllMediciones = async () => {
-    try {
-      const user = JSON.parse(localStorage.getItem('user'));
-      const allMediciones = [];
-      
-      for (const alumno of alumnos) {
-        try {
-          const response = await medicionesService.getByAlumno(alumno.id);
-          const medicionesConAlumno = response.data.map(m => ({
-            ...m,
-            nombre_alumno: alumno.nombre,
-            dni_alumno: alumno.dni
-          }));
-          allMediciones.push(...medicionesConAlumno);
-        } catch (err) {
-          console.log(`No hay mediciones para ${alumno.nombre}`);
-        }
+  try {
+    if (alumnos.length === 0) return;
+    
+    const allMediciones = [];
+    
+    for (const alumno of alumnos) {
+      try {
+        const response = await medicionesService.getByAlumno(alumno.id);
+        const medicionesConAlumno = response.data.map(m => ({
+          ...m,
+          nombre_alumno: alumno.nombre,
+          dni_alumno: alumno.dni
+        }));
+        allMediciones.push(...medicionesConAlumno);
+      } catch (err) {
+        console.log(`No hay mediciones para ${alumno.nombre}`);
       }
-      
-      setMediciones(allMediciones);
-    } catch (error) {
-      console.error('Error cargando mediciones:', error);
     }
-  };
+    
+    setMediciones(allMediciones);
+  } catch (error) {
+    console.error('Error cargando mediciones:', error);
+  }
+};
+
 
   const aplicarFiltros = () => {
     let resultado = [...mediciones];

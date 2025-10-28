@@ -18,6 +18,7 @@ function Navbar({ user, onLogout }) {
           <Link to="/alumnos" style={styles.link}>Alumnos</Link>
           <Link to="/mediciones" style={styles.link}>Mediciones</Link>
           <Link to="/pagos" style={styles.link}>Pagos</Link>
+          <Link to="/evolucion" style={styles.link}>Evolucion</Link>
         </div>
 
         <div style={styles.userSection}>

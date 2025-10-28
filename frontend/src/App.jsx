@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import Alumnos from './pages/Alumnos';
 import Mediciones from './pages/Mediciones';
 import Pagos from './pages/Pagos';
+import Evolucion from './pages/Evolucion';
 
 // Páginas de admin
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -76,6 +77,7 @@ function App() {
           <Route path="alumnos" element={<Alumnos />} />
           <Route path="mediciones" element={<Mediciones />} />
           <Route path="pagos" element={<Pagos />} />
+          <Route path="/evolucion" element={<Evolucion />} />
         </Route>
       </Routes>
     </BrowserRouter>
