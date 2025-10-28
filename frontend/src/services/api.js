@@ -33,7 +33,6 @@ export const medicionesService = {
 };
 
 // Servicios de Pagos
-// Servicios de Pagos
 export const pagosService = {
   getByAlumno: (id_alumno) => api.get(`/pagos-alumnos/alumno/${id_alumno}`),
   getByProfesor: (id_profesor) => api.get(`/pagos-alumnos/profesor/${id_profesor}`),
