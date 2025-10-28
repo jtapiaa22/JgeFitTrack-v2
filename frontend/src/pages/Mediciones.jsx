@@ -3,26 +3,33 @@ import { alumnosService, medicionesService } from '../services/api';
 
 function Mediciones() {
   const [alumnos, setAlumnos] = useState([]);
-  const [selectedAlumno, setSelectedAlumno] = useState('');
   const [mediciones, setMediciones] = useState([]);
+  const [medicionesFiltradas, setMedicionesFiltradas] = useState([]);
+  const [selectedAlumno, setSelectedAlumno] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [usarBalanza, setUsarBalanza] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [editId, setEditId] = useState(null);
 
+  // Estados para filtros
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
+  const [filtroPesoMin, setFiltroPesoMin] = useState('');
+  const [filtroPesoMax, setFiltroPesoMax] = useState('');
+  const [filtroAlumno, setFiltroAlumno] = useState('todos');
+  const [ordenamiento, setOrdenamiento] = useState('fecha-desc');
+
   const [formData, setFormData] = useState({
-    fecha: new Date().toISOString().split('T')[0],
+    fecha_medicion: new Date().toISOString().split('T')[0],
     peso: '',
     altura: '',
+    cuello: '',
     cintura: '',
     cadera: '',
-    brazo: '',
-    pierna: '',
-    grasa_corporal: '',
-    agua_corporal: '',
-    masa_muscular: '',
-    imc: '',
+    usa_balanza: false,
+    grasa_corporal_balanza: '',
+    agua_corporal_balanza: '',
+    masa_muscular_balanza: '',
     notas: '',
     edad: '',
     sexo: ''
@@ -30,29 +37,26 @@ function Mediciones() {
 
   useEffect(() => {
     loadAlumnos();
+    loadAllMediciones();
   }, []);
 
   useEffect(() => {
-    if (selectedAlumno) {
-      loadMediciones(selectedAlumno);
+    if (selectedAlumno && !editMode) {
+      const alumno = alumnos.find(a => a.id === parseInt(selectedAlumno));
+      if (alumno) {
+        setFormData(prev => ({
+          ...prev,
+          edad: alumno.edad,
+          sexo: alumno.sexo
+        }));
+      }
     }
-  }, [selectedAlumno]);
+  }, [selectedAlumno, alumnos, editMode]);
 
-  // Calcular IMC automáticamente
+  // Aplicar filtros
   useEffect(() => {
-    if (formData.peso && formData.altura) {
-      const alturaMetros = formData.altura / 100;
-      const imc = (formData.peso / (alturaMetros * alturaMetros)).toFixed(2);
-      setFormData(prev => ({ ...prev, imc }));
-    }
-  }, [formData.peso, formData.altura]);
-
-  // Calcular estimaciones si no usa balanza
-  useEffect(() => {
-    if (!usarBalanza && formData.peso && formData.altura && formData.edad && formData.sexo && formData.imc) {
-      calcularEstimaciones();
-    }
-  }, [usarBalanza, formData.peso, formData.altura, formData.edad, formData.sexo, formData.imc]);
+    aplicarFiltros();
+  }, [mediciones, filtroFechaDesde, filtroFechaHasta, filtroPesoMin, filtroPesoMax, filtroAlumno, ordenamiento]);
 
   const loadAlumnos = async () => {
     try {
@@ -66,67 +70,97 @@ function Mediciones() {
     }
   };
 
-  const loadMediciones = async (id_alumno) => {
+  const loadAllMediciones = async () => {
     try {
-      const response = await medicionesService.getByAlumno(id_alumno);
-      setMediciones(response.data);
+      const user = JSON.parse(localStorage.getItem('user'));
+      const allMediciones = [];
+      
+      for (const alumno of alumnos) {
+        try {
+          const response = await medicionesService.getByAlumno(alumno.id);
+          const medicionesConAlumno = response.data.map(m => ({
+            ...m,
+            nombre_alumno: alumno.nombre,
+            dni_alumno: alumno.dni
+          }));
+          allMediciones.push(...medicionesConAlumno);
+        } catch (err) {
+          console.log(`No hay mediciones para ${alumno.nombre}`);
+        }
+      }
+      
+      setMediciones(allMediciones);
     } catch (error) {
       console.error('Error cargando mediciones:', error);
-      setMediciones([]);
     }
   };
 
-  const calcularEstimaciones = () => {
-    const peso = parseFloat(formData.peso);
-    const sexo = formData.sexo;
-    const edad = parseInt(formData.edad);
+  const aplicarFiltros = () => {
+    let resultado = [...mediciones];
 
-    if (!peso || !edad) return;
-
-    let grasaEstimada, aguaEstimada, masaMuscularEstimada;
-
-    if (sexo === 'M') {
-      grasaEstimada = (1.20 * parseFloat(formData.imc)) + (0.23 * edad) - 16.2;
-      aguaEstimada = 60 - (grasaEstimada * 0.7);
-      masaMuscularEstimada = peso * (1 - grasaEstimada / 100);
-    } else {
-      grasaEstimada = (1.20 * parseFloat(formData.imc)) + (0.23 * edad) - 5.4;
-      aguaEstimada = 50 - (grasaEstimada * 0.7);
-      masaMuscularEstimada = peso * (1 - grasaEstimada / 100);
+    // 1. FILTRO por alumno
+    if (filtroAlumno !== 'todos') {
+      resultado = resultado.filter(m => m.id_alumno === parseInt(filtroAlumno));
     }
 
-    setFormData(prev => ({
-      ...prev,
-      grasa_corporal: grasaEstimada.toFixed(2),
-      agua_corporal: aguaEstimada.toFixed(2),
-      masa_muscular: masaMuscularEstimada.toFixed(2)
-    }));
+    // 2. FILTRO por rango de fechas
+    if (filtroFechaDesde) {
+      resultado = resultado.filter(m => 
+        new Date(m.fecha_medicion) >= new Date(filtroFechaDesde)
+      );
+    }
+    if (filtroFechaHasta) {
+      resultado = resultado.filter(m => 
+        new Date(m.fecha_medicion) <= new Date(filtroFechaHasta)
+      );
+    }
+
+    // 3. FILTRO por rango de peso
+    if (filtroPesoMin !== '') {
+      resultado = resultado.filter(m => 
+        parseFloat(m.peso) >= parseFloat(filtroPesoMin)
+      );
+    }
+    if (filtroPesoMax !== '') {
+      resultado = resultado.filter(m => 
+        parseFloat(m.peso) <= parseFloat(filtroPesoMax)
+      );
+    }
+
+    // 4. ORDENAMIENTO
+    resultado.sort((a, b) => {
+      switch(ordenamiento) {
+        case 'fecha-desc':
+          return new Date(b.fecha_medicion) - new Date(a.fecha_medicion);
+        case 'fecha-asc':
+          return new Date(a.fecha_medicion) - new Date(b.fecha_medicion);
+        case 'peso-desc':
+          return parseFloat(b.peso) - parseFloat(a.peso);
+        case 'peso-asc':
+          return parseFloat(a.peso) - parseFloat(b.peso);
+        case 'imc-desc':
+          return parseFloat(b.imc) - parseFloat(a.imc);
+        case 'imc-asc':
+          return parseFloat(a.imc) - parseFloat(b.imc);
+        case 'alumno-asc':
+          return (a.nombre_alumno || '').localeCompare(b.nombre_alumno || '');
+        case 'alumno-desc':
+          return (b.nombre_alumno || '').localeCompare(a.nombre_alumno || '');
+        default:
+          return 0;
+      }
+    });
+
+    setMedicionesFiltradas(resultado);
   };
 
-  const handleAlumnoChange = (e) => {
-    const alumnoId = e.target.value;
-    setSelectedAlumno(alumnoId);
-    
-    const alumno = alumnos.find(a => a.id == alumnoId);
-    if (alumno) {
-      const edad = calcularEdad(alumno.fecha_nacimiento);
-      setFormData(prev => ({
-        ...prev,
-        edad,
-        sexo: alumno.sexo
-      }));
-    }
-  };
-
-  const calcularEdad = (fechaNacimiento) => {
-    const hoy = new Date();
-    const nacimiento = new Date(fechaNacimiento);
-    let edad = hoy.getFullYear() - nacimiento.getFullYear();
-    const mes = hoy.getMonth() - nacimiento.getMonth();
-    if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
-      edad--;
-    }
-    return edad;
+  const limpiarFiltros = () => {
+    setFiltroFechaDesde('');
+    setFiltroFechaHasta('');
+    setFiltroPesoMin('');
+    setFiltroPesoMax('');
+    setFiltroAlumno('todos');
+    setOrdenamiento('fecha-desc');
   };
 
   const handleSubmit = async (e) => {
@@ -137,21 +171,23 @@ function Mediciones() {
     }
 
     try {
+      const user = JSON.parse(localStorage.getItem('user'));
       const payload = {
-        id_alumno: selectedAlumno,
-        fecha: formData.fecha,
+        id_alumno: parseInt(selectedAlumno),
+        id_profesor: user.id,
+        fecha_medicion: formData.fecha_medicion,
         peso: parseFloat(formData.peso),
         altura: parseFloat(formData.altura),
-        cintura: parseFloat(formData.cintura) || null,
-        cadera: parseFloat(formData.cadera) || null,
-        brazo: parseFloat(formData.brazo) || null,
-        pierna: parseFloat(formData.pierna) || null,
-        grasa_corporal: parseFloat(formData.grasa_corporal) || null,
-        agua_corporal: parseFloat(formData.agua_corporal) || null,
-        masa_muscular: parseFloat(formData.masa_muscular) || null,
-        imc: parseFloat(formData.imc),
-        balanza_manual: !usarBalanza,
-        notas: formData.notas
+        cuello: formData.cuello ? parseFloat(formData.cuello) : null,
+        cintura: formData.cintura ? parseFloat(formData.cintura) : null,
+        cadera: formData.cadera ? parseFloat(formData.cadera) : null,
+        usa_balanza: formData.usa_balanza,
+        grasa_corporal_balanza: formData.usa_balanza && formData.grasa_corporal_balanza ? parseFloat(formData.grasa_corporal_balanza) : null,
+        agua_corporal_balanza: formData.usa_balanza && formData.agua_corporal_balanza ? parseFloat(formData.agua_corporal_balanza) : null,
+        masa_muscular_balanza: formData.usa_balanza && formData.masa_muscular_balanza ? parseFloat(formData.masa_muscular_balanza) : null,
+        notas: formData.notas,
+        edad: parseInt(formData.edad),
+        sexo: formData.sexo
       };
 
       if (editMode && editId) {
@@ -159,62 +195,59 @@ function Mediciones() {
         alert('✅ Medición actualizada correctamente');
       } else {
         await medicionesService.create(payload);
-        alert('✅ Medición guardada correctamente');
+        alert('✅ Medición registrada correctamente');
       }
 
       setShowForm(false);
       resetForm();
-      loadMediciones(selectedAlumno);
+      loadAllMediciones();
     } catch (error) {
       console.error('Error guardando medición:', error);
       alert('❌ Error al guardar medición');
     }
   };
 
-  const handleEdit = (medicion) => {
-    setEditMode(true);
-    setEditId(medicion.id);
-    setUsarBalanza(!!medicion.grasa_corporal);
-    setFormData({
-      fecha: medicion.fecha.split('T')[0],
-      peso: medicion.peso,
-      altura: medicion.altura,
-      cintura: medicion.cintura || '',
-      cadera: medicion.cadera || '',
-      brazo: medicion.brazo || '',
-      pierna: medicion.pierna || '',
-      grasa_corporal: medicion.grasa_corporal || '',
-      agua_corporal: medicion.agua_corporal || '',
-      masa_muscular: medicion.masa_muscular || '',
-      imc: medicion.imc,
-      notas: medicion.notas || '',
-      edad: formData.edad, // Mantener edad y sexo del alumno seleccionado
-      sexo: formData.sexo
-    });
-    setShowForm(true);
-  };
-
   const resetForm = () => {
     setEditMode(false);
     setEditId(null);
-    const alumno = alumnos.find(a => a.id == selectedAlumno);
+    setSelectedAlumno('');
     setFormData({
-      fecha: new Date().toISOString().split('T')[0],
+      fecha_medicion: new Date().toISOString().split('T')[0],
       peso: '',
       altura: '',
+      cuello: '',
       cintura: '',
       cadera: '',
-      brazo: '',
-      pierna: '',
-      grasa_corporal: '',
-      agua_corporal: '',
-      masa_muscular: '',
-      imc: '',
+      usa_balanza: false,
+      grasa_corporal_balanza: '',
+      agua_corporal_balanza: '',
+      masa_muscular_balanza: '',
       notas: '',
-      edad: alumno ? calcularEdad(alumno.fecha_nacimiento) : '',
-      sexo: alumno ? alumno.sexo : ''
+      edad: '',
+      sexo: ''
     });
-    setUsarBalanza(false);
+  };
+
+  const handleEdit = (medicion) => {
+    setEditMode(true);
+    setEditId(medicion.id);
+    setSelectedAlumno(medicion.id_alumno);
+    setFormData({
+      fecha_medicion: medicion.fecha_medicion.split('T')[0],
+      peso: medicion.peso,
+      altura: medicion.altura,
+      cuello: medicion.cuello || '',
+      cintura: medicion.cintura || '',
+      cadera: medicion.cadera || '',
+      usa_balanza: medicion.usa_balanza,
+      grasa_corporal_balanza: medicion.grasa_corporal_balanza || '',
+      agua_corporal_balanza: medicion.agua_corporal_balanza || '',
+      masa_muscular_balanza: medicion.masa_muscular_balanza || '',
+      notas: medicion.notas || '',
+            edad: medicion.edad,
+      sexo: medicion.sexo
+    });
+    setShowForm(true);
   };
 
   const handleDelete = async (id) => {
@@ -222,7 +255,7 @@ function Mediciones() {
       try {
         await medicionesService.delete(id);
         alert('✅ Medición eliminada correctamente');
-        loadMediciones(selectedAlumno);
+        loadAllMediciones();
       } catch (error) {
         console.error('Error eliminando medición:', error);
         alert('❌ Error al eliminar medición');
@@ -230,312 +263,457 @@ function Mediciones() {
     }
   };
 
+  const getIMCCategoria = (imc) => {
+    if (imc < 18.5) return { texto: 'Bajo peso', color: '#3498db' };
+    if (imc < 25) return { texto: 'Normal', color: '#27ae60' };
+    if (imc < 30) return { texto: 'Sobrepeso', color: '#f39c12' };
+    return { texto: 'Obesidad', color: '#e74c3c' };
+  };
+
   if (loading) return <div>Cargando...</div>;
+
+  const hayFiltrosActivos = filtroFechaDesde !== '' || filtroFechaHasta !== '' || 
+                            filtroPesoMin !== '' || filtroPesoMax !== '' || 
+                            filtroAlumno !== 'todos' || ordenamiento !== 'fecha-desc';
 
   return (
     <div>
       <h1>Gestión de Mediciones</h1>
 
-      <div style={styles.alumnoSelector}>
-        <label style={styles.label}>Selecciona un alumno:</label>
-        <select
-          value={selectedAlumno}
-          onChange={handleAlumnoChange}
-          style={styles.select}
-        >
-          <option value="">-- Selecciona un alumno --</option>
-          {alumnos.map(alumno => (
-            <option key={alumno.id} value={alumno.id}>
-              {alumno.nombre} - DNI: {alumno.dni}
-            </option>
-          ))}
-        </select>
+      {/* PANEL DE FILTROS */}
+      <div style={styles.filtersContainer}>
+        <h3 style={{marginTop: 0, marginBottom: '15px'}}>🔍 Filtros y Búsqueda</h3>
+        
+        <div style={styles.filtersGrid}>
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Filtrar por alumno:</label>
+            <select
+              value={filtroAlumno}
+              onChange={(e) => setFiltroAlumno(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="todos">Todos los alumnos</option>
+              {alumnos.map(alumno => (
+                <option key={alumno.id} value={alumno.id}>
+                  {alumno.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Fecha desde:</label>
+            <input
+              type="date"
+              value={filtroFechaDesde}
+              onChange={(e) => setFiltroFechaDesde(e.target.value)}
+              style={styles.filterInput}
+            />
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Fecha hasta:</label>
+            <input
+              type="date"
+              value={filtroFechaHasta}
+              onChange={(e) => setFiltroFechaHasta(e.target.value)}
+              style={styles.filterInput}
+            />
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Peso mínimo (kg):</label>
+            <input
+              type="number"
+              step="0.1"
+              value={filtroPesoMin}
+              onChange={(e) => setFiltroPesoMin(e.target.value)}
+              style={styles.filterInput}
+              placeholder="0.0"
+            />
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Peso máximo (kg):</label>
+            <input
+              type="number"
+              step="0.1"
+              value={filtroPesoMax}
+              onChange={(e) => setFiltroPesoMax(e.target.value)}
+              style={styles.filterInput}
+              placeholder="Sin límite"
+            />
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Ordenar por:</label>
+            <select
+              value={ordenamiento}
+              onChange={(e) => setOrdenamiento(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="fecha-desc">Fecha (más reciente)</option>
+              <option value="fecha-asc">Fecha (más antigua)</option>
+              <option value="peso-desc">Peso (mayor a menor)</option>
+              <option value="peso-asc">Peso (menor a mayor)</option>
+              <option value="imc-desc">IMC (mayor a menor)</option>
+              <option value="imc-asc">IMC (menor a mayor)</option>
+              <option value="alumno-asc">Alumno (A-Z)</option>
+              <option value="alumno-desc">Alumno (Z-A)</option>
+            </select>
+          </div>
+        </div>
+
+        {hayFiltrosActivos && (
+          <button onClick={limpiarFiltros} style={styles.clearFiltersBtn}>
+            🔄 Limpiar todos los filtros
+          </button>
+        )}
+
+        <div style={styles.resultsInfo}>
+          <span>
+            Mostrando <strong>{medicionesFiltradas.length}</strong> de <strong>{mediciones.length}</strong> mediciones
+          </span>
+        </div>
       </div>
 
-      {selectedAlumno && (
-        <>
-          <div style={styles.header}>
-            <h2>Mediciones del alumno</h2>
-            <button 
-              onClick={() => {
-                if (showForm) {
-                  resetForm();
-                }
-                setShowForm(!showForm);
-              }} 
-              style={styles.addBtn}
-            >
-              {showForm ? 'Cancelar' : '+ Nueva Medición'}
-            </button>
-          </div>
+      <div style={styles.header}>
+        <h2>Mediciones registradas</h2>
+        <button
+          onClick={() => {
+            if (showForm) {
+              resetForm();
+            }
+            setShowForm(!showForm);
+          }}
+          style={styles.addBtn}
+        >
+          {showForm ? 'Cancelar' : '+ Registrar Medición'}
+        </button>
+      </div>
 
-          {showForm && (
-            <form onSubmit={handleSubmit} style={styles.form}>
-              <h3>{editMode ? '✏️ Editar Medición' : '➕ Nueva Medición'}</h3>
+      {showForm && (
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <h3>{editMode ? '✏️ Editar Medición' : '➕ Registrar Nueva Medición'}</h3>
 
-              {editMode && (
-                <div style={styles.infoBox}>
-                  <strong>ℹ️ Editando medición del {new Date(formData.fecha).toLocaleDateString()}</strong>
-                </div>
-              )}
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Fecha:</label>
-                <input
-                  type="date"
-                  value={formData.fecha}
-                  onChange={(e) => setFormData({...formData, fecha: e.target.value})}
-                  style={styles.input}
-                  required
-                />
-              </div>
-
-              <div style={styles.row}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Peso (kg): *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.peso}
-                    onChange={(e) => setFormData({...formData, peso: e.target.value})}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Altura (cm): *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.altura}
-                    onChange={(e) => setFormData({...formData, altura: e.target.value})}
-                    style={styles.input}
-                    required
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>IMC (calculado):</label>
-                  <input
-                    type="text"
-                    value={formData.imc}
-                    style={{...styles.input, backgroundColor: '#f0f0f0'}}
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div style={styles.checkboxGroup}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={usarBalanza}
-                    onChange={(e) => setUsarBalanza(e.target.checked)}
-                  />
-                  {' '}Usar datos de balanza inteligente
-                </label>
-              </div>
-
-              {usarBalanza ? (
-                <div style={styles.balanzaSection}>
-                  <h4>Datos de la balanza</h4>
-                  <div style={styles.row}>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Grasa corporal (%):</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.grasa_corporal}
-                        onChange={(e) => setFormData({...formData, grasa_corporal: e.target.value})}
-                        style={styles.input}
-                      />
-                    </div>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Agua corporal (%):</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.agua_corporal}
-                        onChange={(e) => setFormData({...formData, agua_corporal: e.target.value})}
-                        style={styles.input}
-                      />
-                    </div>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Masa muscular (kg):</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.masa_muscular}
-                        onChange={(e) => setFormData({...formData, masa_muscular: e.target.value})}
-                        style={styles.input}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div style={styles.estimacionSection}>
-                  <h4>Estimaciones calculadas</h4>
-                  <p style={styles.infoText}>
-                    Los valores se calculan automáticamente basándose en peso, altura, edad y sexo.
-                  </p>
-                  <div style={styles.row}>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Grasa corporal estimada (%):</label>
-                      <input
-                        type="text"
-                        value={formData.grasa_corporal}
-                        style={{...styles.input, backgroundColor: '#f0f0f0'}}
-                        readOnly
-                      />
-                    </div>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Agua corporal estimada (%):</label>
-                      <input
-                                                type="text"
-                        value={formData.agua_corporal}
-                        style={{...styles.input, backgroundColor: '#f0f0f0'}}
-                        readOnly
-                      />
-                    </div>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Masa muscular estimada (kg):</label>
-                      <input
-                        type="text"
-                        value={formData.masa_muscular}
-                        style={{...styles.input, backgroundColor: '#f0f0f0'}}
-                        readOnly
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <h4>Medidas corporales (opcional)</h4>
-              <div style={styles.row}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Cintura (cm):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.cintura}
-                    onChange={(e) => setFormData({...formData, cintura: e.target.value})}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Cadera (cm):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.cadera}
-                    onChange={(e) => setFormData({...formData, cadera: e.target.value})}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Brazo (cm):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.brazo}
-                    onChange={(e) => setFormData({...formData, brazo: e.target.value})}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Muslo (cm):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.pierna}
-                    onChange={(e) => setFormData({...formData, pierna: e.target.value})}
-                    style={styles.input}
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Notas:</label>
-                <textarea
-                  value={formData.notas}
-                  onChange={(e) => setFormData({...formData, notas: e.target.value})}
-                  style={{...styles.input, minHeight: '80px'}}
-                  placeholder="Observaciones adicionales..."
-                />
-              </div>
-
-              <button type="submit" style={styles.submitBtn}>
-                {editMode ? '💾 Actualizar Medición' : '➕ Guardar Medición'}
-              </button>
-            </form>
+          {editMode && (
+            <div style={styles.infoBox}>
+              <strong>ℹ️ Editando medición de:</strong> {alumnos.find(a => a.id === parseInt(selectedAlumno))?.nombre}
+            </div>
           )}
 
-          <div style={styles.tableContainer}>
-            <h3>Historial de Mediciones</h3>
-            {mediciones.length === 0 ? (
-              <p>No hay mediciones registradas para este alumno.</p>
-            ) : (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Fecha</th>
-                    <th style={styles.th}>Peso</th>
-                    <th style={styles.th}>Altura</th>
-                    <th style={styles.th}>IMC</th>
-                    <th style={styles.th}>Grasa %</th>
-                    <th style={styles.th}>Agua %</th>
-                    <th style={styles.th}>Masa Musc.</th>
-                    <th style={styles.th}>Cintura</th>
-                    <th style={styles.th}>Cadera</th>
-                    <th style={styles.th}>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mediciones.map(medicion => (
-                    <tr key={medicion.id}>
-                      <td style={styles.td}>{new Date(medicion.fecha).toLocaleDateString()}</td>
-                      <td style={styles.td}>{medicion.peso} kg</td>
-                      <td style={styles.td}>{medicion.altura} cm</td>
-                      <td style={styles.td}>{medicion.imc}</td>
-                      <td style={styles.td}>{medicion.grasa_corporal ? `${medicion.grasa_corporal}%` : '-'}</td>
-                      <td style={styles.td}>{medicion.agua_corporal ? `${medicion.agua_corporal}%` : '-'}</td>
-                      <td style={styles.td}>{medicion.masa_muscular ? `${medicion.masa_muscular} kg` : '-'}</td>
-                      <td style={styles.td}>{medicion.cintura ? `${medicion.cintura} cm` : '-'}</td>
-                      <td style={styles.td}>{medicion.cadera ? `${medicion.cadera} cm` : '-'}</td>
-                      <td style={styles.td}>
-                        <button 
-                          onClick={() => handleEdit(medicion)} 
-                          style={styles.editBtn}
-                        >
-                          ✏️ Editar
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(medicion.id)} 
-                          style={styles.deleteBtn}
-                        >
-                          🗑️ Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Alumno: *</label>
+            <select
+              value={selectedAlumno}
+              onChange={(e) => setSelectedAlumno(e.target.value)}
+              style={styles.input}
+              required
+              disabled={editMode}
+            >
+              <option value="">-- Selecciona un alumno --</option>
+              {alumnos.map(alumno => (
+                <option key={alumno.id} value={alumno.id}>
+                  {alumno.nombre} - DNI: {alumno.dni}
+                </option>
+              ))}
+            </select>
           </div>
-        </>
+
+          <div style={styles.row}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Fecha de Medición: *</label>
+              <input
+                type="date"
+                value={formData.fecha_medicion}
+                onChange={(e) => setFormData({...formData, fecha_medicion: e.target.value})}
+                style={styles.input}
+                required
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Peso (kg): *</label>
+              <input
+                type="number"
+                step="0.1"
+                value={formData.peso}
+                onChange={(e) => setFormData({...formData, peso: e.target.value})}
+                style={styles.input}
+                placeholder="70.5"
+                required
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Altura (cm): *</label>
+              <input
+                type="number"
+                step="0.1"
+                value={formData.altura}
+                onChange={(e) => setFormData({...formData, altura: e.target.value})}
+                style={styles.input}
+                placeholder="175"
+                required
+              />
+            </div>
+          </div>
+
+          <h4 style={{marginTop: '20px', marginBottom: '10px'}}>Medidas Corporales (para estimación)</h4>
+          <div style={styles.row}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Cuello (cm):</label>
+              <input
+                type="number"
+                step="0.1"
+                value={formData.cuello}
+                onChange={(e) => setFormData({...formData, cuello: e.target.value})}
+                style={styles.input}
+                placeholder="Opcional"
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Cintura (cm):</label>
+              <input
+                type="number"
+                step="0.1"
+                value={formData.cintura}
+                onChange={(e) => setFormData({...formData, cintura: e.target.value})}
+                style={styles.input}
+                placeholder="Opcional"
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Cadera (cm):</label>
+              <input
+                type="number"
+                step="0.1"
+                value={formData.cadera}
+                onChange={(e) => setFormData({...formData, cadera: e.target.value})}
+                style={styles.input}
+                placeholder="Opcional (solo mujeres)"
+              />
+            </div>
+          </div>
+
+          <div style={styles.checkboxGroup}>
+            <label style={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={formData.usa_balanza}
+                onChange={(e) => setFormData({...formData, usa_balanza: e.target.checked})}
+                style={styles.checkbox}
+              />
+              <strong>Usar datos de balanza inteligente</strong>
+            </label>
+          </div>
+
+          {formData.usa_balanza && (
+            <>
+              <h4 style={{marginTop: '20px', marginBottom: '10px'}}>Datos de Balanza Inteligente</h4>
+              <div style={styles.row}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Grasa Corporal (%):</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.grasa_corporal_balanza}
+                    onChange={(e) => setFormData({...formData, grasa_corporal_balanza: e.target.value})}
+                    style={styles.input}
+                    placeholder="25.5"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Agua Corporal (%):</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.agua_corporal_balanza}
+                    onChange={(e) => setFormData({...formData, agua_corporal_balanza: e.target.value})}
+                    style={styles.input}
+                    placeholder="60.0"
+                  />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Masa Muscular (%):</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={formData.masa_muscular_balanza}
+                    onChange={(e) => setFormData({...formData, masa_muscular_balanza: e.target.value})}
+                    style={styles.input}
+                    placeholder="45.0"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Notas:</label>
+            <textarea
+              value={formData.notas}
+              onChange={(e) => setFormData({...formData, notas: e.target.value})}
+              style={{...styles.input, minHeight: '80px'}}
+              placeholder="Observaciones sobre la medición..."
+            />
+          </div>
+
+          <button type="submit" style={styles.submitBtn}>
+            {editMode ? '💾 Actualizar Medición' : '➕ Registrar Medición'}
+          </button>
+        </form>
       )}
+
+      <div style={styles.tableContainer}>
+        {medicionesFiltradas.length === 0 ? (
+          <p style={styles.noResults}>
+            {hayFiltrosActivos 
+              ? '🔍 No se encontraron mediciones con los filtros aplicados' 
+              : 'No hay mediciones registradas'}
+          </p>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Fecha</th>
+                <th style={styles.th}>Alumno</th>
+                <th style={styles.th}>Peso</th>
+                <th style={styles.th}>Altura</th>
+                <th style={styles.th}>IMC</th>
+                <th style={styles.th}>Grasa %</th>
+                <th style={styles.th}>Método</th>
+                <th style={styles.th}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {medicionesFiltradas.map(medicion => {
+                const imcData = getIMCCategoria(medicion.imc);
+                return (
+                  <tr key={medicion.id}>
+                    <td style={styles.td}>{new Date(medicion.fecha_medicion).toLocaleDateString()}</td>
+                    <td style={styles.td}>
+                      <strong>{medicion.nombre_alumno}</strong>
+                      <br />
+                      <small style={{color: '#666'}}>DNI: {medicion.dni_alumno}</small>
+                    </td>
+                    <td style={styles.td}><strong>{medicion.peso} kg</strong></td>
+                    <td style={styles.td}>{medicion.altura} cm</td>
+                    <td style={styles.td}>
+                      <span style={{
+                        ...styles.imcBadge,
+                        backgroundColor: imcData.color
+                      }}>
+                        {medicion.imc} - {imcData.texto}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      {medicion.usa_balanza && medicion.grasa_corporal_balanza 
+                        ? `${medicion.grasa_corporal_balanza}%` 
+                        : medicion.grasa_corporal_estimada 
+                          ? `~${medicion.grasa_corporal_estimada}%`
+                          : '-'}
+                    </td>
+                    <td style={styles.td}>
+                      {medicion.usa_balanza ? (
+                        <span style={{...styles.metodoBadge, backgroundColor: '#9b59b6'}}>
+                          📊 Balanza
+                        </span>
+                      ) : (
+                        <span style={{...styles.metodoBadge, backgroundColor: '#3498db'}}>
+                          📏 Estimación
+                        </span>
+                      )}
+                    </td>
+                    <td style={styles.td}>
+                                            <button onClick={() => handleEdit(medicion)} style={styles.editBtn}>
+                        ✏️ Editar
+                      </button>
+                      <button onClick={() => handleDelete(medicion.id)} style={styles.deleteBtn}>
+                        🗑️ Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
 
 const styles = {
-  alumnoSelector: {
-    backgroundColor: 'black',
+  filtersContainer: {
+    backgroundColor: 'white',
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  filtersGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '15px',
+    marginBottom: '15px'
+  },
+  filterGroup: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  filterLabel: {
+    fontSize: '13px',
+    fontWeight: 'bold',
+    marginBottom: '5px',
+    color: '#2c3e50'
+  },
+  filterSelect: {
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #bdc3c7',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    outline: 'none'
+  },
+  filterInput: {
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #bdc3c7',
+    borderRadius: '4px',
+    outline: 'none'
+  },
+  clearFiltersBtn: {
+    padding: '10px 20px',
+    backgroundColor: '#95a5a6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    marginTop: '10px',
+    width: '100%'
+  },
+  resultsInfo: {
+    fontSize: '14px',
+    color: '#7f8c8d',
+    padding: '12px',
+    backgroundColor: '#ecf0f1',
+    borderRadius: '4px',
+    textAlign: 'center',
+    marginTop: '15px'
+  },
+  noResults: {
+    textAlign: 'center',
+    padding: '40px',
+    color: '#7f8c8d',
+    fontSize: '16px'
   },
   header: {
     display: 'flex',
@@ -553,14 +731,14 @@ const styles = {
     fontSize: '14px'
   },
   form: {
-    backgroundColor: '#031927ff',
+    backgroundColor: 'white',
     padding: '30px',
     borderRadius: '8px',
     marginBottom: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
   },
   infoBox: {
-    backgroundColor: '#87f790ff',
+    backgroundColor: '#e8f5e9',
     border: '1px solid #4caf50',
     padding: '15px',
     borderRadius: '8px',
@@ -586,41 +764,29 @@ const styles = {
   input: {
     width: '100%',
     padding: '10px',
-    border: '1px solid #ffffffff',
-    borderRadius: '4px',
-    fontSize: '14px',
-    boxSizing: 'border-box'
-  },
-  select: {
-    width: '100%',
-    padding: '10px',
     border: '1px solid #ddd',
     borderRadius: '4px',
     fontSize: '14px',
     boxSizing: 'border-box'
   },
   checkboxGroup: {
-    marginBottom: '20px',
-    padding: '10px',
-    backgroundColor: '#072450ff',
-    borderRadius: '4px'
+    marginTop: '20px',
+    marginBottom: '10px',
+    padding: '15px',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '8px'
   },
-  balanzaSection: {
-    backgroundColor: '#06b8f3ff',
-    padding: '20px',
-    borderRadius: '8px',
-    marginBottom: '20px'
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    cursor: 'pointer',
+    fontSize: '14px'
   },
-  estimacionSection: {
-    backgroundColor: '#022542ff',
-    padding: '20px',
-    borderRadius: '8px',
-    marginBottom: '20px'
-  },
-  infoText: {
-    fontSize: '13px',
-    color: '#ecc03dff',
-    marginBottom: '15px'
+  checkbox: {
+    marginRight: '10px',
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer'
   },
   submitBtn: {
     padding: '12px 30px',
@@ -631,10 +797,11 @@ const styles = {
     cursor: 'pointer',
     width: '100%',
     fontSize: '16px',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    marginTop: '20px'
   },
   tableContainer: {
-    backgroundColor: 'black',
+    backgroundColor: 'white',
     borderRadius: '8px',
     padding: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
@@ -642,22 +809,37 @@ const styles = {
   },
   table: {
     width: '100%',
-    borderCollapse: 'collapse',
-    marginTop: '15px'
+    borderCollapse: 'collapse'
   },
   th: {
-    color:'#0096faff',
     textAlign: 'left',
     padding: '12px',
     borderBottom: '2px solid #ddd',
-    backgroundColor: '#0d1b29ff',
-    fontSize: '13px'
+    backgroundColor: '#f8f9fa',
+    fontSize: '13px',
+    whiteSpace: 'nowrap'
   },
   td: {
-    color: '#f3c600ff',
     padding: '12px',
-    borderBottom: '1px solid #ffffffff',
+    borderBottom: '1px solid #ddd',
     fontSize: '14px'
+  },
+  imcBadge: {
+    display: 'inline-block',
+    padding: '6px 12px',
+    color: 'white',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    whiteSpace: 'nowrap'
+  },
+  metodoBadge: {
+    display: 'inline-block',
+    padding: '4px 8px',
+    color: 'white',
+    borderRadius: '4px',
+    fontSize: '12px',
+    whiteSpace: 'nowrap'
   },
   editBtn: {
     padding: '6px 12px',
@@ -681,4 +863,5 @@ const styles = {
 };
 
 export default Mediciones;
+
 

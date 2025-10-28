@@ -4,12 +4,21 @@ import { alumnosService, pagosService } from '../services/api';
 function Pagos() {
   const [alumnos, setAlumnos] = useState([]);
   const [pagos, setPagos] = useState([]);
+  const [pagosFiltrados, setPagosFiltrados] = useState([]);
   const [selectedAlumno, setSelectedAlumno] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('todos');
   const [editMode, setEditMode] = useState(false);
   const [editId, setEditId] = useState(null);
+
+  // Estados para filtros
+  const [filtroMetodo, setFiltroMetodo] = useState('todos');
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
+  const [filtroMontoMin, setFiltroMontoMin] = useState('');
+  const [filtroMontoMax, setFiltroMontoMax] = useState('');
+  const [ordenamiento, setOrdenamiento] = useState('fecha-desc');
 
   const [formData, setFormData] = useState({
     fecha_pago: new Date().toISOString().split('T')[0],
@@ -30,6 +39,11 @@ function Pagos() {
       loadPagosByAlumno(selectedAlumno);
     }
   }, [selectedAlumno, viewMode]);
+
+  // Aplicar filtros cada vez que cambien
+  useEffect(() => {
+    aplicarFiltros();
+  }, [pagos, filtroMetodo, filtroFechaDesde, filtroFechaHasta, filtroMontoMin, filtroMontoMax, ordenamiento]);
 
   const loadAlumnos = async () => {
     try {
@@ -62,6 +76,70 @@ function Pagos() {
       console.error('Error cargando pagos del alumno:', error);
       setPagos([]);
     }
+  };
+
+  const aplicarFiltros = () => {
+    let resultado = [...pagos];
+
+    // 1. FILTRO por método de pago
+    if (filtroMetodo !== 'todos') {
+      resultado = resultado.filter(pago => pago.metodo_pago === filtroMetodo);
+    }
+
+    // 2. FILTRO por rango de fechas
+    if (filtroFechaDesde) {
+      resultado = resultado.filter(pago => 
+        new Date(pago.fecha_pago) >= new Date(filtroFechaDesde)
+      );
+    }
+    if (filtroFechaHasta) {
+      resultado = resultado.filter(pago => 
+        new Date(pago.fecha_pago) <= new Date(filtroFechaHasta)
+      );
+    }
+
+    // 3. FILTRO por rango de montos
+    if (filtroMontoMin !== '') {
+      resultado = resultado.filter(pago => 
+        parseFloat(pago.monto) >= parseFloat(filtroMontoMin)
+      );
+    }
+    if (filtroMontoMax !== '') {
+      resultado = resultado.filter(pago => 
+        parseFloat(pago.monto) <= parseFloat(filtroMontoMax)
+      );
+    }
+
+    // 4. ORDENAMIENTO
+    resultado.sort((a, b) => {
+      switch(ordenamiento) {
+        case 'fecha-desc':
+          return new Date(b.fecha_pago) - new Date(a.fecha_pago);
+        case 'fecha-asc':
+          return new Date(a.fecha_pago) - new Date(b.fecha_pago);
+        case 'monto-desc':
+          return parseFloat(b.monto) - parseFloat(a.monto);
+        case 'monto-asc':
+          return parseFloat(a.monto) - parseFloat(b.monto);
+        case 'alumno-asc':
+          return (a.nombre_alumno || '').localeCompare(b.nombre_alumno || '');
+        case 'alumno-desc':
+          return (b.nombre_alumno || '').localeCompare(a.nombre_alumno || '');
+        default:
+          return 0;
+      }
+    });
+
+    setPagosFiltrados(resultado);
+  };
+
+  const limpiarFiltros = () => {
+    setFiltroMetodo('todos');
+    setFiltroFechaDesde('');
+    setFiltroFechaHasta('');
+    setFiltroMontoMin('');
+    setFiltroMontoMax('');
+    setOrdenamiento('fecha-desc');
   };
 
   const handleViewModeChange = (mode) => {
@@ -98,11 +176,9 @@ function Pagos() {
       };
 
       if (editMode && editId) {
-        // EDITAR
         await pagosService.update(editId, payload);
         alert('✅ Pago actualizado correctamente');
       } else {
-        // CREAR
         await pagosService.create(payload);
         alert('✅ Pago registrado correctamente');
       }
@@ -167,10 +243,14 @@ function Pagos() {
   };
 
   const calcularTotal = () => {
-    return pagos.reduce((sum, pago) => sum + parseFloat(pago.monto || 0), 0).toFixed(2);
+    return pagosFiltrados.reduce((sum, pago) => sum + parseFloat(pago.monto || 0), 0).toFixed(2);
   };
 
   if (loading) return <div>Cargando...</div>;
+
+  const hayFiltrosActivos = filtroMetodo !== 'todos' || filtroFechaDesde !== '' || 
+                            filtroFechaHasta !== '' || filtroMontoMin !== '' || 
+                            filtroMontoMax !== '' || ordenamiento !== 'fecha-desc';
 
   return (
     <div>
@@ -181,7 +261,7 @@ function Pagos() {
           onClick={() => handleViewModeChange('todos')}
           style={{
             ...styles.viewModeBtn,
-            ...(viewMode === 'todos' ? styles.viewModeBtnActive : {})
+                        ...(viewMode === 'todos' ? styles.viewModeBtnActive : {})
           }}
         >
           Todos los Pagos
@@ -214,6 +294,103 @@ function Pagos() {
           </select>
         </div>
       )}
+
+      {/* PANEL DE FILTROS */}
+      <div style={styles.filtersContainer}>
+        <h3 style={{marginTop: 0, marginBottom: '15px'}}>🔍 Filtros y Búsqueda</h3>
+        
+        <div style={styles.filtersGrid}>
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Método de pago:</label>
+            <select
+              value={filtroMetodo}
+              onChange={(e) => setFiltroMetodo(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="todos">Todos</option>
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="debito">Débito</option>
+              <option value="credito">Crédito</option>
+            </select>
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Fecha desde:</label>
+            <input
+              type="date"
+              value={filtroFechaDesde}
+              onChange={(e) => setFiltroFechaDesde(e.target.value)}
+              style={styles.filterInput}
+            />
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Fecha hasta:</label>
+            <input
+              type="date"
+              value={filtroFechaHasta}
+              onChange={(e) => setFiltroFechaHasta(e.target.value)}
+              style={styles.filterInput}
+            />
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Monto mínimo ($):</label>
+            <input
+              type="number"
+              step="0.01"
+              value={filtroMontoMin}
+              onChange={(e) => setFiltroMontoMin(e.target.value)}
+              style={styles.filterInput}
+              placeholder="0.00"
+            />
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Monto máximo ($):</label>
+            <input
+              type="number"
+              step="0.01"
+              value={filtroMontoMax}
+              onChange={(e) => setFiltroMontoMax(e.target.value)}
+              style={styles.filterInput}
+              placeholder="Sin límite"
+            />
+          </div>
+
+          <div style={styles.filterGroup}>
+            <label style={styles.filterLabel}>Ordenar por:</label>
+            <select
+              value={ordenamiento}
+              onChange={(e) => setOrdenamiento(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="fecha-desc">Fecha (más reciente)</option>
+              <option value="fecha-asc">Fecha (más antigua)</option>
+              <option value="monto-desc">Monto (mayor a menor)</option>
+              <option value="monto-asc">Monto (menor a mayor)</option>
+              {viewMode === 'todos' && <option value="alumno-asc">Alumno (A-Z)</option>}
+              {viewMode === 'todos' && <option value="alumno-desc">Alumno (Z-A)</option>}
+            </select>
+          </div>
+        </div>
+
+        {hayFiltrosActivos && (
+          <button onClick={limpiarFiltros} style={styles.clearFiltersBtn}>
+            🔄 Limpiar todos los filtros
+          </button>
+        )}
+
+        <div style={styles.resultsInfo}>
+          <span>
+            Mostrando <strong>{pagosFiltrados.length}</strong> de <strong>{pagos.length}</strong> pagos
+            {pagosFiltrados.length > 0 && (
+              <> | Total filtrado: <strong>${calcularTotal()}</strong></>
+            )}
+          </span>
+        </div>
+      </div>
 
       <div style={styles.header}>
         <h2>
@@ -346,11 +523,15 @@ function Pagos() {
       <div style={styles.tableContainer}>
         <div style={styles.totalSection}>
           <h3>Total: ${calcularTotal()}</h3>
-          <p>{pagos.length} pago{pagos.length !== 1 ? 's' : ''} registrado{pagos.length !== 1 ? 's' : ''}</p>
+          <p>{pagosFiltrados.length} pago{pagosFiltrados.length !== 1 ? 's' : ''} {hayFiltrosActivos ? 'filtrado' + (pagosFiltrados.length !== 1 ? 's' : '') : 'registrado' + (pagosFiltrados.length !== 1 ? 's' : '')}</p>
         </div>
 
-        {pagos.length === 0 ? (
-          <p>No hay pagos registrados.</p>
+        {pagosFiltrados.length === 0 ? (
+          <p style={styles.noResults}>
+            {hayFiltrosActivos 
+              ? '🔍 No se encontraron pagos con los filtros aplicados' 
+              : 'No hay pagos registrados'}
+          </p>
         ) : (
           <table style={styles.table}>
             <thead>
@@ -365,7 +546,7 @@ function Pagos() {
               </tr>
             </thead>
             <tbody>
-              {pagos.map(pago => (
+              {pagosFiltrados.map(pago => (
                 <tr key={pago.id}>
                   <td style={styles.td}>{new Date(pago.fecha_pago).toLocaleDateString()}</td>
                   {viewMode === 'todos' && (
@@ -375,7 +556,7 @@ function Pagos() {
                       <small style={{color: '#666'}}>DNI: {pago.dni}</small>
                     </td>
                   )}
-                                    <td style={styles.td}>
+                  <td style={styles.td}>
                     {pago.periodo_desde && pago.periodo_hasta ? (
                       <>
                         {new Date(pago.periodo_desde).toLocaleDateString()} - <br />
@@ -443,6 +624,72 @@ const styles = {
     borderRadius: '8px',
     marginBottom: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  filtersContainer: {
+    backgroundColor: 'white',
+    padding: '20px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  filtersGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '15px',
+    marginBottom: '15px'
+  },
+  filterGroup: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  filterLabel: {
+    fontSize: '13px',
+    fontWeight: 'bold',
+    marginBottom: '5px',
+    color: '#2c3e50'
+  },
+  filterSelect: {
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #bdc3c7',
+    borderRadius: '4px',
+    backgroundColor: 'white',
+    cursor: 'pointer',
+    outline: 'none'
+  },
+  filterInput: {
+    padding: '8px 12px',
+    fontSize: '14px',
+    border: '1px solid #bdc3c7',
+        borderRadius: '4px',
+    outline: 'none'
+  },
+  clearFiltersBtn: {
+    padding: '10px 20px',
+    backgroundColor: '#95a5a6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    marginTop: '10px',
+    width: '100%'
+  },
+  resultsInfo: {
+    fontSize: '14px',
+    color: '#7f8c8d',
+    padding: '12px',
+    backgroundColor: '#ecf0f1',
+    borderRadius: '4px',
+    textAlign: 'center',
+    marginTop: '15px'
+  },
+  noResults: {
+    textAlign: 'center',
+    padding: '40px',
+    color: '#7f8c8d',
+    fontSize: '16px'
   },
   header: {
     display: 'flex',
@@ -580,4 +827,5 @@ const styles = {
 };
 
 export default Pagos;
+
 
