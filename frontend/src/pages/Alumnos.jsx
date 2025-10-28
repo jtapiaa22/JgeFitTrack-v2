@@ -5,6 +5,9 @@ function Alumnos() {
   const [alumnos, setAlumnos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editId, setEditId] = useState(null);
+  
   const [formData, setFormData] = useState({
     dni: '',
     nombre: '',
@@ -34,34 +37,65 @@ function Alumnos() {
     e.preventDefault();
     try {
       const user = JSON.parse(localStorage.getItem('user'));
-      await alumnosService.create({
-        ...formData,
-        id_cliente: user.id
-      });
+      
+      if (editMode && editId) {
+        // EDITAR
+        await alumnosService.update(editId, formData);
+        alert('✅ Alumno actualizado correctamente');
+      } else {
+        // CREAR
+        await alumnosService.create({
+          ...formData,
+          id_cliente: user.id
+        });
+        alert('✅ Alumno creado correctamente');
+      }
+      
       setShowForm(false);
-      setFormData({
-        dni: '',
-        nombre: '',
-        sexo: 'M',
-        fecha_nacimiento: '',
-        contacto: '',
-        notas: ''
-      });
+      resetForm();
       loadAlumnos();
     } catch (error) {
-      console.error('Error creando alumno:', error);
-      alert('Error al crear alumno');
+      console.error('Error guardando alumno:', error);
+      alert('❌ Error al guardar alumno');
     }
   };
 
+  const resetForm = () => {
+    setEditMode(false);
+    setEditId(null);
+    setFormData({
+      dni: '',
+      nombre: '',
+      sexo: 'M',
+      fecha_nacimiento: '',
+      contacto: '',
+      notas: ''
+    });
+  };
+
+  const handleEdit = (alumno) => {
+    setEditMode(true);
+    setEditId(alumno.id);
+    setFormData({
+      dni: alumno.dni,
+      nombre: alumno.nombre,
+      sexo: alumno.sexo,
+      fecha_nacimiento: alumno.fecha_nacimiento.split('T')[0],
+      contacto: alumno.contacto || '',
+      notas: alumno.notas || ''
+    });
+    setShowForm(true);
+  };
+
   const handleDelete = async (id) => {
-    if (window.confirm('¿Estás seguro de eliminar este alumno?')) {
+    if (window.confirm('¿Estás seguro de eliminar este alumno? Se eliminarán también sus mediciones y pagos.')) {
       try {
         await alumnosService.delete(id);
+        alert('✅ Alumno eliminado correctamente');
         loadAlumnos();
       } catch (error) {
         console.error('Error eliminando alumno:', error);
-        alert('Error al eliminar alumno');
+        alert('❌ Error al eliminar alumno');
       }
     }
   };
@@ -72,13 +106,29 @@ function Alumnos() {
     <div>
       <div style={styles.header}>
         <h1>Gestión de Alumnos</h1>
-        <button onClick={() => setShowForm(!showForm)} style={styles.addBtn}>
+        <button 
+          onClick={() => {
+            if (showForm) {
+              resetForm();
+            }
+            setShowForm(!showForm);
+          }} 
+          style={styles.addBtn}
+        >
           {showForm ? 'Cancelar' : '+ Nuevo Alumno'}
         </button>
       </div>
 
       {showForm && (
         <form onSubmit={handleSubmit} style={styles.form}>
+          <h3>{editMode ? '✏️ Editar Alumno' : '➕ Nuevo Alumno'}</h3>
+          
+          {editMode && (
+            <div style={styles.infoBox}>
+              <strong>ℹ️ Editando alumno:</strong> {formData.nombre}
+            </div>
+          )}
+
           <input
             type="text"
             placeholder="DNI"
@@ -112,7 +162,7 @@ function Alumnos() {
           />
           <input
             type="text"
-            placeholder="Contacto"
+            placeholder="Contacto (email o teléfono)"
             value={formData.contacto}
             onChange={(e) => setFormData({...formData, contacto: e.target.value})}
             style={styles.input}
@@ -123,39 +173,56 @@ function Alumnos() {
             onChange={(e) => setFormData({...formData, notas: e.target.value})}
             style={{...styles.input, minHeight: '80px'}}
           />
-          <button type="submit" style={styles.submitBtn}>Guardar Alumno</button>
+          <button type="submit" style={styles.submitBtn}>
+            {editMode ? '💾 Actualizar Alumno' : '➕ Guardar Alumno'}
+          </button>
         </form>
       )}
 
       <div style={styles.tableContainer}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>DNI</th>
-              <th style={styles.th}>Nombre</th>
-              <th style={styles.th}>Sexo</th>
-              <th style={styles.th}>Fecha Nac.</th>
-              <th style={styles.th}>Contacto</th>
-              <th style={styles.th}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {alumnos.map(alumno => (
-              <tr key={alumno.id}>
-                <td style={styles.td}>{alumno.dni}</td>
-                <td style={styles.td}>{alumno.nombre}</td>
-                <td style={styles.td}>{alumno.sexo}</td>
-                <td style={styles.td}>{new Date(alumno.fecha_nacimiento).toLocaleDateString()}</td>
-                <td style={styles.td}>{alumno.contacto}</td>
-                <td style={styles.td}>
-                  <button onClick={() => handleDelete(alumno.id)} style={styles.deleteBtn}>
-                    Eliminar
-                  </button>
-                </td>
+        {alumnos.length === 0 ? (
+          <p style={{textAlign: 'center', padding: '40px', color: '#7f8c8d'}}>
+            No tienes alumnos registrados. Haz clic en "+ Nuevo Alumno" para agregar uno.
+          </p>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>DNI</th>
+                <th style={styles.th}>Nombre</th>
+                <th style={styles.th}>Sexo</th>
+                <th style={styles.th}>Fecha Nac.</th>
+                <th style={styles.th}>Contacto</th>
+                <th style={styles.th}>Acciones</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {alumnos.map(alumno => (
+                <tr key={alumno.id}>
+                  <td style={styles.td}>{alumno.dni}</td>
+                  <td style={styles.td}>{alumno.nombre}</td>
+                  <td style={styles.td}>{alumno.sexo}</td>
+                  <td style={styles.td}>{new Date(alumno.fecha_nacimiento).toLocaleDateString()}</td>
+                  <td style={styles.td}>{alumno.contacto || '-'}</td>
+                  <td style={styles.td}>
+                    <button 
+                      onClick={() => handleEdit(alumno)} 
+                      style={styles.editBtn}
+                    >
+                      ✏️ Editar
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(alumno.id)} 
+                      style={styles.deleteBtn}
+                    >
+                      🗑️ Eliminar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -177,12 +244,21 @@ const styles = {
     cursor: 'pointer',
     fontSize: '14px'
   },
-    form: {
+  form: {
     backgroundColor: 'white',
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  infoBox: {
+    backgroundColor: '#e8f5e9',
+    border: '1px solid #4caf50',
+    padding: '15px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    color: '#2e7d32',
+    fontSize: '14px'
   },
   input: {
     width: '100%',
@@ -222,6 +298,16 @@ const styles = {
     padding: '12px',
     borderBottom: '1px solid #ddd'
   },
+  editBtn: {
+    padding: '6px 12px',
+    backgroundColor: '#f39c12',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    marginRight: '8px'
+  },
   deleteBtn: {
     padding: '6px 12px',
     backgroundColor: '#e74c3c',
@@ -234,4 +320,3 @@ const styles = {
 };
 
 export default Alumnos;
-

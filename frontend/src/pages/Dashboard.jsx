@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { alumnosService } from '../services/api';
+import AlertaPrueba from '../components/AlertaPrueba';  // AGREGAR ESTA LÍNEA
 
 function Dashboard() {
   const [stats, setStats] = useState({
@@ -32,6 +33,8 @@ function Dashboard() {
 
   return (
     <div>
+      <AlertaPrueba />  {/* Esto ahora funcionará */}
+      
       <h1>Dashboard</h1>
       <div style={styles.statsContainer}>
         <div style={styles.statCard}>

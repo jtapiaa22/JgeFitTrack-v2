@@ -7,7 +7,9 @@ function Pagos() {
   const [selectedAlumno, setSelectedAlumno] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('todos'); // 'todos' o 'alumno'
+  const [viewMode, setViewMode] = useState('todos');
+  const [editMode, setEditMode] = useState(false);
+  const [editId, setEditId] = useState(null);
 
   const [formData, setFormData] = useState({
     fecha_pago: new Date().toISOString().split('T')[0],
@@ -42,27 +44,15 @@ function Pagos() {
   };
 
   const loadAllPagos = async () => {
-  console.log('🔵 Intentando cargar todos los pagos...'); // DEBUG
-  try {
-    const user = JSON.parse(localStorage.getItem('user'));
-    console.log('👤 Usuario:', user); // DEBUG
-    console.log('🆔 ID Profesor:', user.id); // DEBUG
-    
-    const response = await pagosService.getByProfesor(user.id);
-    
-    console.log('📦 Response completo:', response); // DEBUG
-    console.log('📋 Datos recibidos:', response.data); // DEBUG
-    console.log('📊 Cantidad de pagos:', response.data.length); // DEBUG
-    
-    setPagos(response.data);
-  } catch (error) {
-    console.error('❌ Error cargando pagos:', error);
-    console.error('❌ Response del error:', error.response); // DEBUG
-    setPagos([]);
-  }
-};
-
-
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      const response = await pagosService.getByProfesor(user.id);
+      setPagos(response.data);
+    } catch (error) {
+      console.error('Error cargando pagos:', error);
+      setPagos([]);
+    }
+  };
 
   const loadPagosByAlumno = async (id_alumno) => {
     try {
@@ -96,7 +86,7 @@ function Pagos() {
 
     try {
       const user = JSON.parse(localStorage.getItem('user'));
-      await pagosService.create({
+      const payload = {
         id_alumno: parseInt(selectedAlumno),
         id_profesor: user.id,
         fecha_pago: formData.fecha_pago,
@@ -105,9 +95,18 @@ function Pagos() {
         monto: parseFloat(formData.monto),
         metodo_pago: formData.metodo_pago,
         observaciones: formData.observaciones
-      });
+      };
 
-      alert('Pago registrado correctamente');
+      if (editMode && editId) {
+        // EDITAR
+        await pagosService.update(editId, payload);
+        alert('✅ Pago actualizado correctamente');
+      } else {
+        // CREAR
+        await pagosService.create(payload);
+        alert('✅ Pago registrado correctamente');
+      }
+
       setShowForm(false);
       resetForm();
       
@@ -117,12 +116,14 @@ function Pagos() {
         loadPagosByAlumno(selectedAlumno);
       }
     } catch (error) {
-      console.error('Error registrando pago:', error);
-      alert('Error al registrar pago');
+      console.error('Error guardando pago:', error);
+      alert('❌ Error al guardar pago');
     }
   };
 
   const resetForm = () => {
+    setEditMode(false);
+    setEditId(null);
     setFormData({
       fecha_pago: new Date().toISOString().split('T')[0],
       periodo_desde: '',
@@ -133,10 +134,26 @@ function Pagos() {
     });
   };
 
+  const handleEdit = (pago) => {
+    setEditMode(true);
+    setEditId(pago.id);
+    setSelectedAlumno(pago.id_alumno);
+    setFormData({
+      fecha_pago: pago.fecha_pago.split('T')[0],
+      periodo_desde: pago.periodo_desde ? pago.periodo_desde.split('T')[0] : '',
+      periodo_hasta: pago.periodo_hasta ? pago.periodo_hasta.split('T')[0] : '',
+      monto: pago.monto,
+      metodo_pago: pago.metodo_pago,
+      observaciones: pago.observaciones || ''
+    });
+    setShowForm(true);
+  };
+
   const handleDelete = async (id) => {
     if (window.confirm('¿Estás seguro de eliminar este pago?')) {
       try {
         await pagosService.delete(id);
+        alert('✅ Pago eliminado correctamente');
         if (viewMode === 'todos') {
           loadAllPagos();
         } else {
@@ -144,7 +161,7 @@ function Pagos() {
         }
       } catch (error) {
         console.error('Error eliminando pago:', error);
-        alert('Error al eliminar pago');
+        alert('❌ Error al eliminar pago');
       }
     }
   };
@@ -204,7 +221,12 @@ function Pagos() {
            selectedAlumno ? 'Pagos del alumno' : 'Selecciona un alumno'}
         </h2>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            if (showForm) {
+              resetForm();
+            }
+            setShowForm(!showForm);
+          }}
           style={styles.addBtn}
           disabled={viewMode === 'alumno' && !selectedAlumno}
         >
@@ -214,9 +236,15 @@ function Pagos() {
 
       {showForm && (
         <form onSubmit={handleSubmit} style={styles.form}>
-          <h3>Registrar Nuevo Pago</h3>
+          <h3>{editMode ? '✏️ Editar Pago' : '➕ Registrar Nuevo Pago'}</h3>
 
-          {viewMode === 'todos' && (
+          {editMode && (
+            <div style={styles.infoBox}>
+              <strong>ℹ️ Editando pago de:</strong> {alumnos.find(a => a.id === parseInt(selectedAlumno))?.nombre}
+            </div>
+          )}
+
+          {!editMode && viewMode === 'todos' && (
             <div style={styles.formGroup}>
               <label style={styles.label}>Alumno: *</label>
               <select
@@ -310,7 +338,7 @@ function Pagos() {
           </div>
 
           <button type="submit" style={styles.submitBtn}>
-            Registrar Pago
+            {editMode ? '💾 Actualizar Pago' : '➕ Registrar Pago'}
           </button>
         </form>
       )}
@@ -347,7 +375,7 @@ function Pagos() {
                       <small style={{color: '#666'}}>DNI: {pago.dni}</small>
                     </td>
                   )}
-                  <td style={styles.td}>
+                                    <td style={styles.td}>
                     {pago.periodo_desde && pago.periodo_hasta ? (
                       <>
                         {new Date(pago.periodo_desde).toLocaleDateString()} - <br />
@@ -365,8 +393,17 @@ function Pagos() {
                   </td>
                   <td style={styles.td}>{pago.observaciones || '-'}</td>
                   <td style={styles.td}>
-                    <button onClick={() => handleDelete(pago.id)} style={styles.deleteBtn}>
-                      Eliminar
+                    <button 
+                      onClick={() => handleEdit(pago)} 
+                      style={styles.editBtn}
+                    >
+                      ✏️ Editar
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(pago.id)} 
+                      style={styles.deleteBtn}
+                    >
+                      🗑️ Eliminar
                     </button>
                   </td>
                 </tr>
@@ -383,11 +420,11 @@ const styles = {
   viewModeSelector: {
     display: 'flex',
     gap: '10px',
-    marginBottom: '20px',
+    marginBottom: '20px'
   },
   viewModeBtn: {
     padding: '10px 20px',
-    backgroundColor: '#098399ff',
+    backgroundColor: '#ecf0f1',
     color: '#2c3e50',
     border: 'none',
     borderRadius: '4px',
@@ -401,7 +438,7 @@ const styles = {
     fontWeight: 'bold'
   },
   alumnoSelector: {
-     backgroundColor: '#06588fff',
+    backgroundColor: 'white',
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px',
@@ -423,11 +460,20 @@ const styles = {
     fontSize: '14px'
   },
   form: {
-    backgroundColor: '#376380ff',
+    backgroundColor: 'white',
     padding: '30px',
     borderRadius: '8px',
     marginBottom: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  infoBox: {
+    backgroundColor: '#e8f5e9',
+    border: '1px solid #4caf50',
+    padding: '15px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    color: '#2e7d32',
+    fontSize: '14px'
   },
   formGroup: {
     marginBottom: '15px',
@@ -438,7 +484,7 @@ const styles = {
     gap: '15px',
     marginBottom: '15px'
   },
-  label: {     
+  label: {
     display: 'block',
     marginBottom: '5px',
     fontWeight: 'bold',
@@ -453,7 +499,6 @@ const styles = {
     boxSizing: 'border-box'
   },
   select: {
-    backgroundColor: '#06588fff',
     width: '100%',
     padding: '10px',
     border: '1px solid #ddd',
@@ -470,12 +515,10 @@ const styles = {
     cursor: 'pointer',
     width: '100%',
     fontSize: '16px',
-    fontWeight: 'bold',
-    marginTop: '10px'
+    fontWeight: 'bold'
   },
   tableContainer: {
-    backgroundColor: '#031720ff',
-    color: '#00a7f5ff',
+    backgroundColor: 'white',
     borderRadius: '8px',
     padding: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
@@ -487,7 +530,7 @@ const styles = {
     alignItems: 'center',
     marginBottom: '20px',
     padding: '15px',
-    backgroundColor: '#1f3d5aff',
+    backgroundColor: '#f8f9fa',
     borderRadius: '8px'
   },
   table: {
@@ -498,9 +541,8 @@ const styles = {
     textAlign: 'left',
     padding: '12px',
     borderBottom: '2px solid #ddd',
-    backgroundColor: '#193d61ff',
-    fontSize: '13px',
-    fontWeight: 'bold'
+    backgroundColor: '#f8f9fa',
+    fontSize: '13px'
   },
   td: {
     padding: '12px',
@@ -516,6 +558,16 @@ const styles = {
     fontSize: '12px',
     textTransform: 'capitalize'
   },
+  editBtn: {
+    padding: '6px 12px',
+    backgroundColor: '#f39c12',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    marginRight: '8px'
+  },
   deleteBtn: {
     padding: '6px 12px',
     backgroundColor: '#e74c3c',
@@ -528,3 +580,4 @@ const styles = {
 };
 
 export default Pagos;
+

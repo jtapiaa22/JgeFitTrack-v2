@@ -1,19 +1,21 @@
 const auth = require('../middleware/auth');
+const adminAuth = require('../middleware/adminAuth');
 const express = require('express');
 const router = express.Router();
 const clientesController = require('../controllers/clientes.controller');
 
-// Listar
-router.get('/', clientesController.getClientes);
-
-// Registro (crear cliente con bcrypt)
-router.post('/', clientesController.registroCliente);
-
-// loguear
+// Login (sin auth)
 router.post('/login', clientesController.loginCliente);
 
-// Editar y borrar (protegidos)
+// Registro
+router.post('/', clientesController.registroCliente);
+
+// Rutas protegidas
+router.get('/', auth, clientesController.getClientes);
+router.get('/estadisticas', auth, clientesController.getEstadisticas);
 router.put('/:id', auth, clientesController.updateCliente);
-router.delete('/:id', auth, clientesController.deleteCliente);
+router.patch('/:id/toggle-activo', auth, adminAuth, clientesController.toggleActivoCliente);
+router.patch('/:id/extender-prueba', auth, adminAuth, clientesController.extenderPrueba);
+router.delete('/:id', auth, adminAuth, clientesController.deleteCliente);
 
 module.exports = router;

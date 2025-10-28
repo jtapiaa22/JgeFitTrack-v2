@@ -8,6 +8,8 @@ function Mediciones() {
   const [showForm, setShowForm] = useState(false);
   const [usarBalanza, setUsarBalanza] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [editId, setEditId] = useState(null);
 
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
@@ -17,13 +19,13 @@ function Mediciones() {
     cadera: '',
     brazo: '',
     pierna: '',
-    // Datos de balanza
     grasa_corporal: '',
     agua_corporal: '',
     masa_muscular: '',
-    // Calculados
     imc: '',
-    notas: ''
+    notas: '',
+    edad: '',
+    sexo: ''
   });
 
   useEffect(() => {
@@ -36,7 +38,7 @@ function Mediciones() {
     }
   }, [selectedAlumno]);
 
-  // Calcular IMC automáticamente cuando cambian peso y altura
+  // Calcular IMC automáticamente
   useEffect(() => {
     if (formData.peso && formData.altura) {
       const alturaMetros = formData.altura / 100;
@@ -45,12 +47,12 @@ function Mediciones() {
     }
   }, [formData.peso, formData.altura]);
 
-  // Si usa balanza manual, calcular estimaciones
+  // Calcular estimaciones si no usa balanza
   useEffect(() => {
-    if (!usarBalanza && formData.peso && formData.altura && formData.edad && formData.sexo) {
+    if (!usarBalanza && formData.peso && formData.altura && formData.edad && formData.sexo && formData.imc) {
       calcularEstimaciones();
     }
-  }, [usarBalanza, formData.peso, formData.altura, formData.edad, formData.sexo]);
+  }, [usarBalanza, formData.peso, formData.altura, formData.edad, formData.sexo, formData.imc]);
 
   const loadAlumnos = async () => {
     try {
@@ -75,7 +77,6 @@ function Mediciones() {
   };
 
   const calcularEstimaciones = () => {
-    // Fórmulas estimadas basadas en edad, sexo, peso y altura
     const peso = parseFloat(formData.peso);
     const sexo = formData.sexo;
     const edad = parseInt(formData.edad);
@@ -84,7 +85,6 @@ function Mediciones() {
 
     let grasaEstimada, aguaEstimada, masaMuscularEstimada;
 
-    // Fórmulas aproximadas (deberás ajustar según tus necesidades)
     if (sexo === 'M') {
       grasaEstimada = (1.20 * parseFloat(formData.imc)) + (0.23 * edad) - 16.2;
       aguaEstimada = 60 - (grasaEstimada * 0.7);
@@ -107,7 +107,6 @@ function Mediciones() {
     const alumnoId = e.target.value;
     setSelectedAlumno(alumnoId);
     
-    // Cargar datos del alumno para cálculos
     const alumno = alumnos.find(a => a.id == alumnoId);
     if (alumno) {
       const edad = calcularEdad(alumno.fecha_nacimiento);
@@ -138,7 +137,7 @@ function Mediciones() {
     }
 
     try {
-      await medicionesService.create({
+      const payload = {
         id_alumno: selectedAlumno,
         fecha: formData.fecha,
         peso: parseFloat(formData.peso),
@@ -153,19 +152,52 @@ function Mediciones() {
         imc: parseFloat(formData.imc),
         balanza_manual: !usarBalanza,
         notas: formData.notas
-      });
+      };
 
-      alert('Medición guardada correctamente');
+      if (editMode && editId) {
+        await medicionesService.update(editId, payload);
+        alert('✅ Medición actualizada correctamente');
+      } else {
+        await medicionesService.create(payload);
+        alert('✅ Medición guardada correctamente');
+      }
+
       setShowForm(false);
       resetForm();
       loadMediciones(selectedAlumno);
     } catch (error) {
       console.error('Error guardando medición:', error);
-      alert('Error al guardar medición');
+      alert('❌ Error al guardar medición');
     }
   };
 
+  const handleEdit = (medicion) => {
+    setEditMode(true);
+    setEditId(medicion.id);
+    setUsarBalanza(!!medicion.grasa_corporal);
+    setFormData({
+      fecha: medicion.fecha.split('T')[0],
+      peso: medicion.peso,
+      altura: medicion.altura,
+      cintura: medicion.cintura || '',
+      cadera: medicion.cadera || '',
+      brazo: medicion.brazo || '',
+      pierna: medicion.pierna || '',
+      grasa_corporal: medicion.grasa_corporal || '',
+      agua_corporal: medicion.agua_corporal || '',
+      masa_muscular: medicion.masa_muscular || '',
+      imc: medicion.imc,
+      notas: medicion.notas || '',
+      edad: formData.edad, // Mantener edad y sexo del alumno seleccionado
+      sexo: formData.sexo
+    });
+    setShowForm(true);
+  };
+
   const resetForm = () => {
+    setEditMode(false);
+    setEditId(null);
+    const alumno = alumnos.find(a => a.id == selectedAlumno);
     setFormData({
       fecha: new Date().toISOString().split('T')[0],
       peso: '',
@@ -178,7 +210,9 @@ function Mediciones() {
       agua_corporal: '',
       masa_muscular: '',
       imc: '',
-      notas: ''
+      notas: '',
+      edad: alumno ? calcularEdad(alumno.fecha_nacimiento) : '',
+      sexo: alumno ? alumno.sexo : ''
     });
     setUsarBalanza(false);
   };
@@ -187,10 +221,11 @@ function Mediciones() {
     if (window.confirm('¿Estás seguro de eliminar esta medición?')) {
       try {
         await medicionesService.delete(id);
+        alert('✅ Medición eliminada correctamente');
         loadMediciones(selectedAlumno);
       } catch (error) {
         console.error('Error eliminando medición:', error);
-        alert('Error al eliminar medición');
+        alert('❌ Error al eliminar medición');
       }
     }
   };
@@ -221,14 +256,28 @@ function Mediciones() {
         <>
           <div style={styles.header}>
             <h2>Mediciones del alumno</h2>
-            <button onClick={() => setShowForm(!showForm)} style={styles.addBtn}>
+            <button 
+              onClick={() => {
+                if (showForm) {
+                  resetForm();
+                }
+                setShowForm(!showForm);
+              }} 
+              style={styles.addBtn}
+            >
               {showForm ? 'Cancelar' : '+ Nueva Medición'}
             </button>
           </div>
 
           {showForm && (
             <form onSubmit={handleSubmit} style={styles.form}>
-              <h3>Nueva Medición</h3>
+              <h3>{editMode ? '✏️ Editar Medición' : '➕ Nueva Medición'}</h3>
+
+              {editMode && (
+                <div style={styles.infoBox}>
+                  <strong>ℹ️ Editando medición del {new Date(formData.fecha).toLocaleDateString()}</strong>
+                </div>
+              )}
 
               <div style={styles.formGroup}>
                 <label style={styles.label}>Fecha:</label>
@@ -340,10 +389,10 @@ function Mediciones() {
                         readOnly
                       />
                     </div>
-                                    <div style={styles.formGroup}>
+                    <div style={styles.formGroup}>
                       <label style={styles.label}>Agua corporal estimada (%):</label>
                       <input
-                        type="text"
+                                                type="text"
                         value={formData.agua_corporal}
                         style={{...styles.input, backgroundColor: '#f0f0f0'}}
                         readOnly
@@ -417,7 +466,7 @@ function Mediciones() {
               </div>
 
               <button type="submit" style={styles.submitBtn}>
-                Guardar Medición
+                {editMode ? '💾 Actualizar Medición' : '➕ Guardar Medición'}
               </button>
             </form>
           )}
@@ -455,8 +504,17 @@ function Mediciones() {
                       <td style={styles.td}>{medicion.cintura ? `${medicion.cintura} cm` : '-'}</td>
                       <td style={styles.td}>{medicion.cadera ? `${medicion.cadera} cm` : '-'}</td>
                       <td style={styles.td}>
-                        <button onClick={() => handleDelete(medicion.id)} style={styles.deleteBtn}>
-                          Eliminar
+                        <button 
+                          onClick={() => handleEdit(medicion)} 
+                          style={styles.editBtn}
+                        >
+                          ✏️ Editar
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(medicion.id)} 
+                          style={styles.deleteBtn}
+                        >
+                          🗑️ Eliminar
                         </button>
                       </td>
                     </tr>
@@ -473,7 +531,7 @@ function Mediciones() {
 
 const styles = {
   alumnoSelector: {
-    backgroundColor: 'white',
+    backgroundColor: 'black',
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px',
@@ -495,11 +553,20 @@ const styles = {
     fontSize: '14px'
   },
   form: {
-    backgroundColor: 'white',
+    backgroundColor: '#031927ff',
     padding: '30px',
     borderRadius: '8px',
     marginBottom: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  infoBox: {
+    backgroundColor: '#87f790ff',
+    border: '1px solid #4caf50',
+    padding: '15px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    color: '#2e7d32',
+    fontSize: '14px'
   },
   formGroup: {
     marginBottom: '15px',
@@ -519,7 +586,7 @@ const styles = {
   input: {
     width: '100%',
     padding: '10px',
-    border: '1px solid #ddd',
+    border: '1px solid #ffffffff',
     borderRadius: '4px',
     fontSize: '14px',
     boxSizing: 'border-box'
@@ -535,24 +602,24 @@ const styles = {
   checkboxGroup: {
     marginBottom: '20px',
     padding: '10px',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#072450ff',
     borderRadius: '4px'
   },
   balanzaSection: {
-    backgroundColor: '#e8f4f8',
+    backgroundColor: '#06b8f3ff',
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px'
   },
   estimacionSection: {
-    backgroundColor: '#fff3cd',
+    backgroundColor: '#022542ff',
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px'
   },
   infoText: {
     fontSize: '13px',
-    color: '#856404',
+    color: '#ecc03dff',
     marginBottom: '15px'
   },
   submitBtn: {
@@ -567,7 +634,7 @@ const styles = {
     fontWeight: 'bold'
   },
   tableContainer: {
-    backgroundColor: 'white',
+    backgroundColor: 'black',
     borderRadius: '8px',
     padding: '20px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
@@ -579,16 +646,28 @@ const styles = {
     marginTop: '15px'
   },
   th: {
+    color:'#0096faff',
     textAlign: 'left',
     padding: '12px',
     borderBottom: '2px solid #ddd',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#0d1b29ff',
     fontSize: '13px'
   },
   td: {
+    color: '#f3c600ff',
     padding: '12px',
-    borderBottom: '1px solid #ddd',
+    borderBottom: '1px solid #ffffffff',
     fontSize: '14px'
+  },
+  editBtn: {
+    padding: '6px 12px',
+    backgroundColor: '#f39c12',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    marginRight: '8px'
   },
   deleteBtn: {
     padding: '6px 12px',

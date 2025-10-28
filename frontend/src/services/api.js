@@ -42,5 +42,16 @@ export const pagosService = {
   delete: (id) => api.delete(`/pagos-alumnos/${id}`)
 };
 
+// Servicios de Suscripciones
+export const suscripcionesService = {
+  getAll: () => api.get(`/pagos-suscripciones`),
+  getByCliente: (id_cliente) => api.get(`/pagos-suscripciones/${id_cliente}`),
+  getSuscripcionActiva: (id_cliente) => api.get(`/pagos-suscripciones/${id_cliente}/activa`),
+  create: (data) => api.post(`/pagos-suscripciones`, data),
+  update: (id, data) => api.put(`/pagos-suscripciones/${id}`, data),
+  delete: (id) => api.delete(`/pagos-suscripciones/${id}`)
+};
+
+
 
 export default api;
