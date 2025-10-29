@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { alumnosService } from '../services/api';
+import toast from 'react-hot-toast';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 function Alumnos() {
   const [alumnos, setAlumnos] = useState([]);
   const [alumnosFiltrados, setAlumnosFiltrados] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editId, setEditId] = useState(null);
 
@@ -37,8 +40,10 @@ function Alumnos() {
       const user = JSON.parse(localStorage.getItem('user'));
       const response = await alumnosService.getByProfesor(user.id);
       setAlumnos(response.data);
+      toast.success(`${response.data.length} alumno(s) cargado(s)`);
     } catch (error) {
       console.error('Error cargando alumnos:', error);
+      toast.error('Error al cargar los alumnos');
     } finally {
       setLoading(false);
     }
@@ -100,10 +105,12 @@ function Alumnos() {
     setSearchTerm('');
     setFiltroSexo('todos');
     setOrdenamiento('nombre-asc');
+    toast.success('Filtros limpiados');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSaving(true);
 
     try {
       const user = JSON.parse(localStorage.getItem('user'));
@@ -114,10 +121,10 @@ function Alumnos() {
 
       if (editMode && editId) {
         await alumnosService.update(editId, payload);
-        alert('✅ Alumno actualizado correctamente');
+        toast.success('Alumno actualizado correctamente');
       } else {
         await alumnosService.create(payload);
-        alert('✅ Alumno creado correctamente');
+        toast.success('Alumno creado correctamente');
       }
 
       setShowForm(false);
@@ -125,7 +132,9 @@ function Alumnos() {
       loadAlumnos();
     } catch (error) {
       console.error('Error guardando alumno:', error);
-      alert('❌ Error al guardar alumno');
+      toast.error('Error al guardar alumno');
+    } finally{
+      setSaving(false);
     }
   };
 
@@ -154,24 +163,25 @@ function Alumnos() {
       notas: alumno.notas || ''
     });
     setShowForm(true);
+    toast.info(`Editando: ${alumno.nombre}`);
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('⚠️ ¿Estás seguro de eliminar este alumno? Se eliminarán también todas sus mediciones y pagos.')) {
-      try {
-        await alumnosService.delete(id);
-        alert('✅ Alumno eliminado correctamente');
-        loadAlumnos();
-      } catch (error) {
-        console.error('Error eliminando alumno:', error);
-        alert('❌ Error al eliminar alumno');
+    toast.promise(
+      alumnosService.delete(id),
+      {
+        loading: `Eliminando a ${nombre}...`,
+        success: () => {
+          loadAlumnos();
+          return `${nombre} eliminado correctamente`;
+        },
+        error: 'Error al eliminar alumno'
       }
-    }
+    );
   };
 
   
-
-  if (loading) return <div>Cargando...</div>;
+  if (loading) return <LoadingSpinner />;
 
   const hayFiltrosActivos = searchTerm !== '' || filtroSexo !== 'todos' || ordenamiento !== 'nombre-asc';
 

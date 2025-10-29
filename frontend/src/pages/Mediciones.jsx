@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { alumnosService, medicionesService } from '../services/api';
+import toast from 'react-hot-toast'; // ⬅️ AGREGAR
+import LoadingSpinner from '../components/LoadingSpinner'; // ⬅️ AGREGAR
 
 function Mediciones() {
   const [alumnos, setAlumnos] = useState([]);
@@ -8,6 +10,7 @@ function Mediciones() {
   const [selectedAlumno, setSelectedAlumno] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false); // ⬅️ AGREGAR
   const [editMode, setEditMode] = useState(false);
   const [editId, setEditId] = useState(null);
 
@@ -45,13 +48,26 @@ function Mediciones() {
     }
   },[alumnos]);
 
+  const calcularEdad = (fechaNacimiento) => {
+    const hoy = new Date();
+    const nacimiento = new Date(fechaNacimiento);
+    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+    const mes = hoy.getMonth() - nacimiento.getMonth();
+    
+    if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
+      edad--;
+    }
+    
+    return edad;
+  };
+
   useEffect(() => {
     if (selectedAlumno && !editMode) {
       const alumno = alumnos.find(a => a.id === parseInt(selectedAlumno));
       if (alumno) {
         setFormData(prev => ({
           ...prev,
-          edad: alumno.edad,
+          edad: calcularEdad(alumno.fecha_nacimiento), // ⬅️ CORREGIR
           sexo: alumno.sexo
         }));
       }
@@ -65,42 +81,47 @@ function Mediciones() {
 
   const loadAlumnos = async () => {
     try {
+      setLoading(true); // ⬅️ AGREGAR
       const user = JSON.parse(localStorage.getItem('user'));
       const response = await alumnosService.getByProfesor(user.id);
       setAlumnos(response.data);
     } catch (error) {
       console.error('Error cargando alumnos:', error);
+      toast.error('Error al cargar los alumnos'); // ⬅️ TOAST
     } finally {
       setLoading(false);
     }
   };
 
   const loadAllMediciones = async () => {
-  try {
-    if (alumnos.length === 0) return;
-    
-    const allMediciones = [];
-    
-    for (const alumno of alumnos) {
-      try {
-        const response = await medicionesService.getByAlumno(alumno.id);
-        const medicionesConAlumno = response.data.map(m => ({
-          ...m,
-          nombre_alumno: alumno.nombre,
-          dni_alumno: alumno.dni
-        }));
-        allMediciones.push(...medicionesConAlumno);
-      } catch (err) {
-        console.log(`No hay mediciones para ${alumno.nombre}`);
+    try {
+      if (alumnos.length === 0) return;
+      
+      const allMediciones = [];
+      
+      for (const alumno of alumnos) {
+        try {
+          const response = await medicionesService.getByAlumno(alumno.id);
+          const medicionesConAlumno = response.data.map(m => ({
+            ...m,
+            nombre_alumno: alumno.nombre,
+            dni_alumno: alumno.dni
+          }));
+          allMediciones.push(...medicionesConAlumno);
+        } catch (err) {
+          console.log(`No hay mediciones para ${alumno.nombre}`);
+        }
       }
+      
+      setMediciones(allMediciones);
+      if (allMediciones.length > 0) { // ⬅️ AGREGAR
+        toast.success(`${allMediciones.length} medición(es) cargada(s)`);
+      }
+    } catch (error) {
+      console.error('Error cargando mediciones:', error);
+      toast.error('Error al cargar las mediciones'); // ⬅️ TOAST
     }
-    
-    setMediciones(allMediciones);
-  } catch (error) {
-    console.error('Error cargando mediciones:', error);
-  }
-};
-
+  };
 
   const aplicarFiltros = () => {
     let resultado = [...mediciones];
@@ -168,14 +189,17 @@ function Mediciones() {
     setFiltroPesoMax('');
     setFiltroAlumno('todos');
     setOrdenamiento('fecha-desc');
+    toast.success('Filtros limpiados'); // ⬅️ TOAST
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedAlumno) {
-      alert('Selecciona un alumno');
+      toast.error('Debes seleccionar un alumno'); // ⬅️ TOAST
       return;
     }
+
+    setSaving(true); // ⬅️ LOADING STATE
 
     try {
       const user = JSON.parse(localStorage.getItem('user'));
@@ -199,10 +223,10 @@ function Mediciones() {
 
       if (editMode && editId) {
         await medicionesService.update(editId, payload);
-        alert('✅ Medición actualizada correctamente');
+        toast.success('✅ Medición actualizada correctamente'); // ⬅️ TOAST
       } else {
         await medicionesService.create(payload);
-        alert('✅ Medición registrada correctamente');
+        toast.success('✅ Medición registrada correctamente'); // ⬅️ TOAST
       }
 
       setShowForm(false);
@@ -210,7 +234,9 @@ function Mediciones() {
       loadAllMediciones();
     } catch (error) {
       console.error('Error guardando medición:', error);
-      alert('❌ Error al guardar medición');
+      toast.error('❌ Error al guardar medición'); // ⬅️ TOAST
+    } finally {
+      setSaving(false); // ⬅️ LOADING STATE
     }
   };
 
@@ -251,23 +277,26 @@ function Mediciones() {
       agua_corporal_balanza: medicion.agua_corporal_balanza || '',
       masa_muscular_balanza: medicion.masa_muscular_balanza || '',
       notas: medicion.notas || '',
-            edad: medicion.edad,
+      edad: medicion.edad,
       sexo: medicion.sexo
     });
     setShowForm(true);
+    toast.info(`Editando medición de ${medicion.nombre_alumno}`); // ⬅️ TOAST
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('¿Estás seguro de eliminar esta medición?')) {
-      try {
-        await medicionesService.delete(id);
-        alert('✅ Medición eliminada correctamente');
-        loadAllMediciones();
-      } catch (error) {
-        console.error('Error eliminando medición:', error);
-        alert('❌ Error al eliminar medición');
+  const handleDelete = async (id, nombre) => {
+    // ⬅️ USAR toast.promise
+    toast.promise(
+      medicionesService.delete(id),
+      {
+        loading: `Eliminando medición de ${nombre}...`,
+        success: () => {
+          loadAllMediciones();
+          return `✅ Medición eliminada correctamente`;
+        },
+        error: '❌ Error al eliminar medición'
       }
-    }
+    );
   };
 
   const getIMCCategoria = (imc) => {
@@ -277,15 +306,15 @@ function Mediciones() {
     return { texto: 'Obesidad', color: '#e74c3c' };
   };
 
-  if (loading) return <div>Cargando...</div>;
+  if (loading) return <LoadingSpinner />; // ⬅️ COMPONENTE LOADING
 
   const hayFiltrosActivos = filtroFechaDesde !== '' || filtroFechaHasta !== '' || 
                             filtroPesoMin !== '' || filtroPesoMax !== '' || 
                             filtroAlumno !== 'todos' || ordenamiento !== 'fecha-desc';
 
   return (
-    <div>
-      <h1>Gestión de Mediciones</h1>
+    <div style={{animation: 'fadeIn 0.3s ease-in'}}> {/* ⬅️ ANIMACIÓN */}
+      <h1 style={{marginBottom: '20px', color: '#2c3e50'}}>Gestión de Mediciones</h1>
 
       {/* PANEL DE FILTROS */}
       <div style={styles.filtersContainer}>
@@ -323,7 +352,7 @@ function Mediciones() {
             <input
               type="date"
               value={filtroFechaHasta}
-              onChange={(e) => setFiltroFechaHasta(e.target.value)}
+                            onChange={(e) => setFiltroFechaHasta(e.target.value)}
               style={styles.filterInput}
             />
           </div>
@@ -389,18 +418,26 @@ function Mediciones() {
         <button
           onClick={() => {
             if (showForm) {
+              // Si el formulario está abierto, cerrarlo y resetear
+              setShowForm(false);
               resetForm();
+              toast.info('Formulario cancelado');
+            } else {
+              // Si está cerrado, abrirlo
+              setShowForm(true);
             }
-            setShowForm(!showForm);
           }}
-          style={styles.addBtn}
+          style={{
+            ...styles.addBtn,
+            backgroundColor: showForm ? '#e74c3c' : '#3498db'
+          }}
         >
-          {showForm ? 'Cancelar' : '+ Registrar Medición'}
+          {showForm ? '✕ Cancelar' : '+ Registrar Medición'}
         </button>
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} style={styles.form}>
+        <form onSubmit={handleSubmit} style={{...styles.form, animation: 'slideIn 0.3s ease-out'}}> {/* ⬅️ ANIMACIÓN */}
           <h3>{editMode ? '✏️ Editar Medición' : '➕ Registrar Nueva Medición'}</h3>
 
           {editMode && (
@@ -570,19 +607,33 @@ function Mediciones() {
             />
           </div>
 
-          <button type="submit" style={styles.submitBtn}>
-            {editMode ? '💾 Actualizar Medición' : '➕ Registrar Medición'}
+          <button 
+            type="submit" 
+            style={styles.submitBtn}
+            disabled={saving} // ⬅️ DESHABILITAR MIENTRAS GUARDA
+          >
+            {saving ? ( // ⬅️ SPINNER MIENTRAS GUARDA
+              <span style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
+                <span style={styles.buttonSpinner}></span>
+                Guardando...
+              </span>
+            ) : (
+              editMode ? '💾 Actualizar Medición' : '➕ Registrar Medición'
+            )}
           </button>
         </form>
       )}
 
       <div style={styles.tableContainer}>
         {medicionesFiltradas.length === 0 ? (
-          <p style={styles.noResults}>
-            {hayFiltrosActivos 
-              ? '🔍 No se encontraron mediciones con los filtros aplicados' 
-              : 'No hay mediciones registradas'}
-          </p>
+          <div style={styles.noResults}> {/* ⬅️ MEJORADO */}
+            <div style={{fontSize: '48px', marginBottom: '10px'}}>📊</div>
+            <p>
+              {hayFiltrosActivos 
+                ? '🔍 No se encontraron mediciones con los filtros aplicados' 
+                : 'No hay mediciones registradas'}
+            </p>
+          </div>
         ) : (
           <table style={styles.table}>
             <thead>
@@ -601,7 +652,7 @@ function Mediciones() {
               {medicionesFiltradas.map(medicion => {
                 const imcData = getIMCCategoria(medicion.imc);
                 return (
-                  <tr key={medicion.id}>
+                  <tr key={medicion.id} style={{transition: 'background-color 0.2s ease'}}> {/* ⬅️ TRANSICIÓN */}
                     <td style={styles.td}>{new Date(medicion.fecha_medicion).toLocaleDateString()}</td>
                     <td style={styles.td}>
                       <strong>{medicion.nombre_alumno}</strong>
@@ -637,10 +688,17 @@ function Mediciones() {
                       )}
                     </td>
                     <td style={styles.td}>
-                                            <button onClick={() => handleEdit(medicion)} style={styles.editBtn}>
+                      <button onClick={() => handleEdit(medicion)} style={styles.editBtn}>
                         ✏️ Editar
                       </button>
-                      <button onClick={() => handleDelete(medicion.id)} style={styles.deleteBtn}>
+                      <button 
+                        onClick={() => {
+                          if (window.confirm(`¿Estás seguro de eliminar esta medición de ${medicion.nombre_alumno}?`)) {
+                            handleDelete(medicion.id, medicion.nombre_alumno);
+                          }
+                        }} 
+                        style={styles.deleteBtn}
+                      >
                         🗑️ Eliminar
                       </button>
                     </td>
@@ -655,13 +713,53 @@ function Mediciones() {
   );
 }
 
+// ⬅️ AGREGAR KEYFRAMES
+const styleSheet = document.styleSheets[0];
+if (styleSheet) {
+  try {
+    styleSheet.insertRule(`
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+    `, styleSheet.cssRules.length);
+
+    styleSheet.insertRule(`
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    `, styleSheet.cssRules.length);
+
+    styleSheet.insertRule(`
+      @keyframes buttonSpin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `, styleSheet.cssRules.length);
+  } catch (e) {
+    console.log('Error adding keyframes');
+  }
+}
+
 const styles = {
   filtersContainer: {
     backgroundColor: 'white',
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    transition: 'box-shadow 0.3s ease'
   },
   filtersGrid: {
     display: 'grid',
@@ -686,14 +784,16 @@ const styles = {
     borderRadius: '4px',
     backgroundColor: 'white',
     cursor: 'pointer',
-    outline: 'none'
+    outline: 'none',
+    transition: 'border-color 0.3s ease'
   },
   filterInput: {
     padding: '8px 12px',
     fontSize: '14px',
     border: '1px solid #bdc3c7',
     borderRadius: '4px',
-    outline: 'none'
+    outline: 'none',
+    transition: 'border-color 0.3s ease'
   },
   clearFiltersBtn: {
     padding: '10px 20px',
@@ -705,7 +805,8 @@ const styles = {
     fontSize: '14px',
     fontWeight: 'bold',
     marginTop: '10px',
-    width: '100%'
+    width: '100%',
+    transition: 'all 0.3s ease'
   },
   resultsInfo: {
     fontSize: '14px',
@@ -718,7 +819,7 @@ const styles = {
   },
   noResults: {
     textAlign: 'center',
-    padding: '40px',
+    padding: '60px 20px',
     color: '#7f8c8d',
     fontSize: '16px'
   },
@@ -729,20 +830,22 @@ const styles = {
     marginBottom: '20px'
   },
   addBtn: {
-    padding: '10px 20px',
-    backgroundColor: '#3498db',
+    padding: '12px 24px',
     color: 'white',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '14px'
+    fontSize: '14px',
+    fontWeight: 'bold',
+    transition: 'all 0.3s ease',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
   },
   form: {
     backgroundColor: 'white',
     padding: '30px',
     borderRadius: '8px',
     marginBottom: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
   },
   infoBox: {
     backgroundColor: '#e8f5e9',
@@ -766,7 +869,8 @@ const styles = {
     display: 'block',
     marginBottom: '5px',
     fontWeight: 'bold',
-    fontSize: '14px'
+    fontSize: '14px',
+    color: '#2c3e50'
   },
   input: {
     width: '100%',
@@ -774,7 +878,8 @@ const styles = {
     border: '1px solid #ddd',
     borderRadius: '4px',
     fontSize: '14px',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    transition: 'border-color 0.3s ease'
   },
   checkboxGroup: {
     marginTop: '20px',
@@ -800,18 +905,29 @@ const styles = {
     backgroundColor: '#27ae60',
     color: 'white',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
     width: '100%',
     fontSize: '16px',
     fontWeight: 'bold',
-    marginTop: '20px'
+    marginTop: '20px',
+    transition: 'all 0.3s ease',
+    boxShadow: '0 2px 4px rgba(39,174,96,0.3)'
+  },
+  buttonSpinner: {
+    display: 'inline-block',
+    width: '16px',
+    height: '16px',
+    border: '3px solid rgba(255,255,255,0.3)',
+    borderTop: '3px solid white',
+    borderRadius: '50%',
+    animation: 'buttonSpin 0.8s linear infinite'
   },
   tableContainer: {
     backgroundColor: 'white',
     borderRadius: '8px',
     padding: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
     overflowX: 'auto'
   },
   table: {
@@ -824,6 +940,8 @@ const styles = {
     borderBottom: '2px solid #ddd',
     backgroundColor: '#f8f9fa',
     fontSize: '13px',
+    fontWeight: 'bold',
+    color: '#2c3e50',
     whiteSpace: 'nowrap'
   },
   td: {
@@ -856,7 +974,8 @@ const styles = {
     borderRadius: '4px',
     cursor: 'pointer',
     fontSize: '12px',
-    marginRight: '8px'
+    marginRight: '8px',
+    transition: 'all 0.3s ease'
   },
   deleteBtn: {
     padding: '6px 12px',
@@ -865,10 +984,10 @@ const styles = {
     border: 'none',
     borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '12px'
+    fontSize: '12px',
+    transition: 'all 0.3s ease'
   }
 };
 
 export default Mediciones;
-
 

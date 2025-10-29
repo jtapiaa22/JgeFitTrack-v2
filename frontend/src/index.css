@@ -66,3 +66,77 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Animaciones globales */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Efectos hover para botones */
+button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Inputs con focus */
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #3498db !important;
+  box-shadow: 0 0 0 3px rgba(52,152,219,0.1);
+}
+
+/* Filas de tabla con hover */
+tbody tr:hover {
+  background-color: #f8f9fa !important;
+}
+
+/* Efectos en search button */
+button:hover {
+  opacity: 0.8;
+}
+
+/* Scroll suave */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .filters-row {
+    flex-direction: column;
+  }
+  
+  .filter-group {
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+  
+  table {
+    font-size: 12px;
+  }
+  
+  button {
+    font-size: 12px !important;
+    padding: 8px 12px !important;
+  }
+}
+
+/* Transiciones suaves para todos los elementos */
+* {
+  transition: all 0.2s ease;
+}
