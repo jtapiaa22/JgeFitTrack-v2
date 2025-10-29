@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { alumnosService, pagosService } from '../services/api';
+import toast from 'react-hot-toast'; // ⬅️ AGREGAR
+import LoadingSpinner from '../components/LoadingSpinner'; // ⬅️ AGREGAR
 
 function Pagos() {
   const [alumnos, setAlumnos] = useState([]);
@@ -8,6 +10,7 @@ function Pagos() {
   const [selectedAlumno, setSelectedAlumno] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false); // ⬅️ AGREGAR
   const [viewMode, setViewMode] = useState('todos');
   const [editMode, setEditMode] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -40,18 +43,19 @@ function Pagos() {
     }
   }, [selectedAlumno, viewMode]);
 
-  // Aplicar filtros cada vez que cambien
   useEffect(() => {
     aplicarFiltros();
   }, [pagos, filtroMetodo, filtroFechaDesde, filtroFechaHasta, filtroMontoMin, filtroMontoMax, ordenamiento]);
 
   const loadAlumnos = async () => {
     try {
+      setLoading(true); // ⬅️ AGREGAR
       const user = JSON.parse(localStorage.getItem('user'));
       const response = await alumnosService.getByProfesor(user.id);
       setAlumnos(response.data);
     } catch (error) {
       console.error('Error cargando alumnos:', error);
+      toast.error('Error al cargar los alumnos'); // ⬅️ TOAST
     } finally {
       setLoading(false);
     }
@@ -62,8 +66,12 @@ function Pagos() {
       const user = JSON.parse(localStorage.getItem('user'));
       const response = await pagosService.getByProfesor(user.id);
       setPagos(response.data);
+      if (response.data.length > 0) { // ⬅️ AGREGAR
+        toast.success(`${response.data.length} pago(s) cargado(s)`);
+      }
     } catch (error) {
       console.error('Error cargando pagos:', error);
+      toast.error('Error al cargar los pagos'); // ⬅️ TOAST
       setPagos([]);
     }
   };
@@ -72,8 +80,10 @@ function Pagos() {
     try {
       const response = await pagosService.getByAlumno(id_alumno);
       setPagos(response.data);
+      toast.success(`${response.data.length} pago(s) encontrado(s)`); // ⬅️ TOAST
     } catch (error) {
       console.error('Error cargando pagos del alumno:', error);
+      toast.error('Error al cargar los pagos del alumno'); // ⬅️ TOAST
       setPagos([]);
     }
   };
@@ -81,12 +91,10 @@ function Pagos() {
   const aplicarFiltros = () => {
     let resultado = [...pagos];
 
-    // 1. FILTRO por método de pago
     if (filtroMetodo !== 'todos') {
       resultado = resultado.filter(pago => pago.metodo_pago === filtroMetodo);
     }
 
-    // 2. FILTRO por rango de fechas
     if (filtroFechaDesde) {
       resultado = resultado.filter(pago => 
         new Date(pago.fecha_pago) >= new Date(filtroFechaDesde)
@@ -98,7 +106,6 @@ function Pagos() {
       );
     }
 
-    // 3. FILTRO por rango de montos
     if (filtroMontoMin !== '') {
       resultado = resultado.filter(pago => 
         parseFloat(pago.monto) >= parseFloat(filtroMontoMin)
@@ -110,7 +117,6 @@ function Pagos() {
       );
     }
 
-    // 4. ORDENAMIENTO
     resultado.sort((a, b) => {
       switch(ordenamiento) {
         case 'fecha-desc':
@@ -140,6 +146,7 @@ function Pagos() {
     setFiltroMontoMin('');
     setFiltroMontoMax('');
     setOrdenamiento('fecha-desc');
+    toast.success('Filtros limpiados'); // ⬅️ TOAST
   };
 
   const handleViewModeChange = (mode) => {
@@ -147,6 +154,8 @@ function Pagos() {
     if (mode === 'todos') {
       setSelectedAlumno('');
       loadAllPagos();
+    } else {
+      toast.info('Selecciona un alumno para ver sus pagos'); // ⬅️ TOAST
     }
   };
 
@@ -158,9 +167,11 @@ function Pagos() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedAlumno) {
-      alert('Selecciona un alumno');
+      toast.error('Debes seleccionar un alumno'); // ⬅️ TOAST
       return;
     }
+
+    setSaving(true); // ⬅️ LOADING STATE
 
     try {
       const user = JSON.parse(localStorage.getItem('user'));
@@ -177,10 +188,10 @@ function Pagos() {
 
       if (editMode && editId) {
         await pagosService.update(editId, payload);
-        alert('✅ Pago actualizado correctamente');
+        toast.success('✅ Pago actualizado correctamente'); // ⬅️ TOAST
       } else {
         await pagosService.create(payload);
-        alert('✅ Pago registrado correctamente');
+        toast.success('✅ Pago registrado correctamente'); // ⬅️ TOAST
       }
 
       setShowForm(false);
@@ -193,7 +204,9 @@ function Pagos() {
       }
     } catch (error) {
       console.error('Error guardando pago:', error);
-      alert('❌ Error al guardar pago');
+      toast.error('❌ Error al guardar pago'); // ⬅️ TOAST
+    } finally {
+      setSaving(false); // ⬅️ LOADING STATE
     }
   };
 
@@ -223,45 +236,48 @@ function Pagos() {
       observaciones: pago.observaciones || ''
     });
     setShowForm(true);
+    toast.info(`Editando pago de ${pago.nombre_alumno}`); // ⬅️ TOAST
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('¿Estás seguro de eliminar este pago?')) {
-      try {
-        await pagosService.delete(id);
-        alert('✅ Pago eliminado correctamente');
-        if (viewMode === 'todos') {
-          loadAllPagos();
-        } else {
-          loadPagosByAlumno(selectedAlumno);
-        }
-      } catch (error) {
-        console.error('Error eliminando pago:', error);
-        alert('❌ Error al eliminar pago');
+  const handleDelete = async (id, nombre) => {
+    // ⬅️ USAR toast.promise
+    toast.promise(
+      pagosService.delete(id),
+      {
+        loading: `Eliminando pago de ${nombre}...`,
+        success: () => {
+          if (viewMode === 'todos') {
+            loadAllPagos();
+          } else {
+            loadPagosByAlumno(selectedAlumno);
+          }
+          return `✅ Pago eliminado correctamente`;
+        },
+        error: '❌ Error al eliminar pago'
       }
-    }
+    );
   };
 
   const calcularTotal = () => {
     return pagosFiltrados.reduce((sum, pago) => sum + parseFloat(pago.monto || 0), 0).toFixed(2);
   };
 
-  if (loading) return <div>Cargando...</div>;
+  if (loading) return <LoadingSpinner />; // ⬅️ COMPONENTE LOADING
 
   const hayFiltrosActivos = filtroMetodo !== 'todos' || filtroFechaDesde !== '' || 
                             filtroFechaHasta !== '' || filtroMontoMin !== '' || 
                             filtroMontoMax !== '' || ordenamiento !== 'fecha-desc';
 
   return (
-    <div>
-      <h1>Gestión de Pagos</h1>
+    <div style={{animation: 'fadeIn 0.3s ease-in'}}> {/* ⬅️ ANIMACIÓN */}
+      <h1 style={{marginBottom: '20px', color: '#2c3e50'}}>Gestión de Pagos</h1>
 
       <div style={styles.viewModeSelector}>
         <button
           onClick={() => handleViewModeChange('todos')}
           style={{
             ...styles.viewModeBtn,
-                        ...(viewMode === 'todos' ? styles.viewModeBtnActive : {})
+            ...(viewMode === 'todos' ? styles.viewModeBtnActive : {})
           }}
         >
           Todos los Pagos
@@ -353,7 +369,7 @@ function Pagos() {
               type="number"
               step="0.01"
               value={filtroMontoMax}
-              onChange={(e) => setFiltroMontoMax(e.target.value)}
+                            onChange={(e) => setFiltroMontoMax(e.target.value)}
               style={styles.filterInput}
               placeholder="Sin límite"
             />
@@ -400,19 +416,25 @@ function Pagos() {
         <button
           onClick={() => {
             if (showForm) {
+              setShowForm(false);
               resetForm();
+              toast.info('Formulario cancelado');
+            } else {
+              setShowForm(true);
             }
-            setShowForm(!showForm);
           }}
-          style={styles.addBtn}
+          style={{
+            ...styles.addBtn,
+            backgroundColor: showForm ? '#e74c3c' : '#3498db'
+          }}
           disabled={viewMode === 'alumno' && !selectedAlumno}
         >
-          {showForm ? 'Cancelar' : '+ Registrar Pago'}
+          {showForm ? '✕ Cancelar' : '+ Registrar Pago'}
         </button>
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} style={styles.form}>
+        <form onSubmit={handleSubmit} style={{...styles.form, animation: 'slideIn 0.3s ease-out'}}>
           <h3>{editMode ? '✏️ Editar Pago' : '➕ Registrar Nuevo Pago'}</h3>
 
           {editMode && (
@@ -514,8 +536,19 @@ function Pagos() {
             />
           </div>
 
-          <button type="submit" style={styles.submitBtn}>
-            {editMode ? '💾 Actualizar Pago' : '➕ Registrar Pago'}
+          <button 
+            type="submit" 
+            style={styles.submitBtn}
+            disabled={saving}
+          >
+            {saving ? (
+              <span style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
+                <span style={styles.buttonSpinner}></span>
+                Guardando...
+              </span>
+            ) : (
+              editMode ? '💾 Actualizar Pago' : '➕ Registrar Pago'
+            )}
           </button>
         </form>
       )}
@@ -527,11 +560,14 @@ function Pagos() {
         </div>
 
         {pagosFiltrados.length === 0 ? (
-          <p style={styles.noResults}>
-            {hayFiltrosActivos 
-              ? '🔍 No se encontraron pagos con los filtros aplicados' 
-              : 'No hay pagos registrados'}
-          </p>
+          <div style={styles.noResults}>
+            <div style={{fontSize: '48px', marginBottom: '10px'}}>💰</div>
+            <p>
+              {hayFiltrosActivos 
+                ? '🔍 No se encontraron pagos con los filtros aplicados' 
+                : 'No hay pagos registrados'}
+            </p>
+          </div>
         ) : (
           <table style={styles.table}>
             <thead>
@@ -547,7 +583,7 @@ function Pagos() {
             </thead>
             <tbody>
               {pagosFiltrados.map(pago => (
-                <tr key={pago.id}>
+                <tr key={pago.id} style={{transition: 'background-color 0.2s ease'}}>
                   <td style={styles.td}>{new Date(pago.fecha_pago).toLocaleDateString()}</td>
                   {viewMode === 'todos' && (
                     <td style={styles.td}>
@@ -581,7 +617,11 @@ function Pagos() {
                       ✏️ Editar
                     </button>
                     <button 
-                      onClick={() => handleDelete(pago.id)} 
+                      onClick={() => {
+                        if (window.confirm(`¿Estás seguro de eliminar este pago de ${pago.nombre_alumno || 'este alumno'}?`)) {
+                          handleDelete(pago.id, pago.nombre_alumno || 'este alumno');
+                        }
+                      }} 
                       style={styles.deleteBtn}
                     >
                       🗑️ Eliminar
@@ -595,6 +635,45 @@ function Pagos() {
       </div>
     </div>
   );
+}
+
+// Agregar keyframes
+const styleSheet = document.styleSheets[0];
+if (styleSheet) {
+  try {
+    styleSheet.insertRule(`
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+    `, styleSheet.cssRules.length);
+
+    styleSheet.insertRule(`
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    `, styleSheet.cssRules.length);
+
+    styleSheet.insertRule(`
+      @keyframes buttonSpin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `, styleSheet.cssRules.length);
+  } catch (e) {
+    console.log('Error adding keyframes');
+  }
 }
 
 const styles = {
@@ -611,7 +690,8 @@ const styles = {
     borderRadius: '4px',
     cursor: 'pointer',
     fontSize: '14px',
-    transition: 'all 0.3s'
+    transition: 'all 0.3s',
+    fontWeight: '500'
   },
   viewModeBtnActive: {
     backgroundColor: '#3498db',
@@ -623,14 +703,15 @@ const styles = {
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
   },
   filtersContainer: {
     backgroundColor: 'white',
     padding: '20px',
     borderRadius: '8px',
     marginBottom: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+    transition: 'box-shadow 0.3s ease'
   },
   filtersGrid: {
     display: 'grid',
@@ -655,14 +736,16 @@ const styles = {
     borderRadius: '4px',
     backgroundColor: 'white',
     cursor: 'pointer',
-    outline: 'none'
+    outline: 'none',
+    transition: 'border-color 0.3s ease'
   },
   filterInput: {
     padding: '8px 12px',
     fontSize: '14px',
     border: '1px solid #bdc3c7',
-        borderRadius: '4px',
-    outline: 'none'
+    borderRadius: '4px',
+    outline: 'none',
+    transition: 'border-color 0.3s ease'
   },
   clearFiltersBtn: {
     padding: '10px 20px',
@@ -674,7 +757,8 @@ const styles = {
     fontSize: '14px',
     fontWeight: 'bold',
     marginTop: '10px',
-    width: '100%'
+    width: '100%',
+    transition: 'all 0.3s ease'
   },
   resultsInfo: {
     fontSize: '14px',
@@ -685,33 +769,29 @@ const styles = {
     textAlign: 'center',
     marginTop: '15px'
   },
-  noResults: {
-    textAlign: 'center',
-    padding: '40px',
-    color: '#7f8c8d',
-    fontSize: '16px'
-  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '20px'
   },
-  addBtn: {
-    padding: '10px 20px',
-    backgroundColor: '#3498db',
+    addBtn: {
+    padding: '12px 24px',
     color: 'white',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
-    fontSize: '14px'
+    fontSize: '14px',
+    fontWeight: 'bold',
+    transition: 'all 0.3s ease',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
   },
   form: {
     backgroundColor: 'white',
     padding: '30px',
     borderRadius: '8px',
     marginBottom: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
   },
   infoBox: {
     backgroundColor: '#e8f5e9',
@@ -735,7 +815,8 @@ const styles = {
     display: 'block',
     marginBottom: '5px',
     fontWeight: 'bold',
-    fontSize: '14px'
+    fontSize: '14px',
+    color: '#2c3e50'
   },
   input: {
     width: '100%',
@@ -743,7 +824,8 @@ const styles = {
     border: '1px solid #ddd',
     borderRadius: '4px',
     fontSize: '14px',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    transition: 'border-color 0.3s ease'
   },
   select: {
     width: '100%',
@@ -751,24 +833,37 @@ const styles = {
     border: '1px solid #ddd',
     borderRadius: '4px',
     fontSize: '14px',
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    cursor: 'pointer',
+    transition: 'border-color 0.3s ease'
   },
   submitBtn: {
     padding: '12px 30px',
     backgroundColor: '#27ae60',
     color: 'white',
     border: 'none',
-    borderRadius: '4px',
+    borderRadius: '8px',
     cursor: 'pointer',
     width: '100%',
     fontSize: '16px',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    transition: 'all 0.3s ease',
+    boxShadow: '0 2px 4px rgba(39,174,96,0.3)'
+  },
+  buttonSpinner: {
+    display: 'inline-block',
+    width: '16px',
+    height: '16px',
+    border: '3px solid rgba(255,255,255,0.3)',
+    borderTop: '3px solid white',
+    borderRadius: '50%',
+    animation: 'buttonSpin 0.8s linear infinite'
   },
   tableContainer: {
     backgroundColor: 'white',
     borderRadius: '8px',
     padding: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
     overflowX: 'auto'
   },
   totalSection: {
@@ -780,6 +875,12 @@ const styles = {
     backgroundColor: '#f8f9fa',
     borderRadius: '8px'
   },
+  noResults: {
+    textAlign: 'center',
+    padding: '60px 20px',
+    color: '#7f8c8d',
+    fontSize: '16px'
+  },
   table: {
     width: '100%',
     borderCollapse: 'collapse'
@@ -789,7 +890,9 @@ const styles = {
     padding: '12px',
     borderBottom: '2px solid #ddd',
     backgroundColor: '#f8f9fa',
-    fontSize: '13px'
+    fontSize: '13px',
+    fontWeight: 'bold',
+    color: '#2c3e50'
   },
   td: {
     padding: '12px',
@@ -813,7 +916,8 @@ const styles = {
     borderRadius: '4px',
     cursor: 'pointer',
     fontSize: '12px',
-    marginRight: '8px'
+    marginRight: '8px',
+    transition: 'all 0.3s ease'
   },
   deleteBtn: {
     padding: '6px 12px',
@@ -822,7 +926,8 @@ const styles = {
     border: 'none',
     borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '12px'
+    fontSize: '12px',
+    transition: 'all 0.3s ease'
   }
 };
 
